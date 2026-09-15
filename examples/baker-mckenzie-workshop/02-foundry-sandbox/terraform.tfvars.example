@@ -1,0 +1,44 @@
+# =====================================================================
+# STACK B - Foundry sandbox : example intake for one team
+# Copy to terraform.tfvars, change the values, `terraform apply`.
+# Onboarding another team = copy this file, change ~6 values.
+# =====================================================================
+
+# --- SANDBOX IDENTITY ---
+team_name           = "applied-ai"
+use_case            = "contract-analysis"
+matter_id           = "none"
+environment         = "sandbox"
+owner_email         = "danielle@bakermckenzie.com"
+cost_center         = "legal-tech-1234"
+
+# The team's developer Entra ID GROUP - granted Azure AI Developer on this Foundry
+# so they can sign in and build (least privilege, this sandbox only). Get the object
+# ID from: az ad group show --group "<group name>" --query id -o tsv
+developer_group_object_id = "00000000-0000-0000-0000-000000000000"
+
+# --- DATA RESIDENCY & ETHICAL WALLS (strict defaults) ---
+data_classification   = "confidential"
+model_deployment_type = "DataZoneStandard"   # keep processing in-geo
+
+# --- GOVERNANCE ---
+allowed_models              = ["gpt-4.1", "text-embedding-3-large"]
+enforce_model_policy_effect = "Audit"        # Audit -> Deny when ready
+enable_content_safety       = true
+
+# --- COST ---
+monthly_budget_usd  = 500
+budget_alert_emails = ["danielle@bakermckenzie.com", "derrick.sharpe@microsoft.com"]
+
+# --- OPTIONAL SERVICES ---
+enable_cosmos = false                         # wired but off for a lean demo
+
+# --- PLACEMENT ---
+location                 = "centralus"
+spoke_vnet_address_space = ["192.168.0.0/23"]
+
+# --- HUB INTEGRATION (private-mesh gateway path) ---
+# The hub VNet that hosts the AI Gateway (Stack A). The sandbox peers to it and
+# links its private DNS zones to it so the hub APIM reaches Foundry privately.
+hub_vnet_resource_id       = "/subscriptions/<hub-sub-id>/resourceGroups/<hub-rg>/providers/Microsoft.Network/virtualNetworks/<hub-vnet>"
+create_reverse_hub_peering = true

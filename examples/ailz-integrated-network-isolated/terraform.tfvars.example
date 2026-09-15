@@ -1,0 +1,37 @@
+# =====================================================================
+# Baker McKenzie - AI Landing Zone (ailz-integrated + network isolation)
+# Copy to terraform.tfvars and replace the placeholder hub resource IDs.
+# =====================================================================
+
+location            = "eastus2"
+resource_group_name = "rg-ailz-spoke-bakermckenzie"
+name_prefix         = "bakerailz"
+
+spoke_vnet_name          = "vnet-ailz-spoke"
+spoke_vnet_address_space = ["192.168.0.0/23"]
+
+# --- Existing hub (platform landing zone) inputs ---------------------
+
+# The hub VNet the spoke peers to.
+hub_vnet_resource_id = "/subscriptions/<hub-sub-id>/resourceGroups/<hub-rg>/providers/Microsoft.Network/virtualNetworks/<hub-vnet-name>"
+
+# Hub DNS: Private DNS Resolver inbound endpoint IP(s), or the hub Azure Firewall DNS proxy IP.
+hub_dns_servers = ["10.0.0.4"]
+
+# Resource group that contains the hub's privatelink.* Private DNS zones.
+hub_private_dns_zones_rg_resource_id = "/subscriptions/<hub-sub-id>/resourceGroups/<hub-dns-rg>"
+
+# Hub Log Analytics workspace to reuse for diagnostics.
+hub_log_analytics_workspace_resource_id = "/subscriptions/<hub-sub-id>/resourceGroups/<hub-rg>/providers/Microsoft.OperationalInsights/workspaces/<hub-law-name>"
+
+# Set false if a separate platform team owns the hub RG (you lack write access there).
+# When false, have the platform team create the reverse hub -> spoke peering afterward.
+create_reverse_hub_peering = true
+
+# Optional demo-only escape hatch: allow ONE deployer public IP onto the Key Vault
+# data plane. Leave commented for a strict Zero Trust posture (run data-plane steps
+# from the in-spoke jumpbox via the hub Bastion instead).
+# deployer_ip_address = "203.0.113.10"
+
+apim_publisher_email = "DoNotReply@bakermckenzie.com"
+apim_publisher_name  = "Baker McKenzie AI Platform"
