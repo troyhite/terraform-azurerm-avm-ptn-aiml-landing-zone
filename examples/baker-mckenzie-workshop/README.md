@@ -46,27 +46,7 @@ through it - they use their sandbox Foundry directly, secured by identity and ne
 
 ## Architecture
 
-```
-   Developer teams (humans)                 Apps / shared consumers (runtime)
-   Entra + least-priv RBAC                  per-team key + Entra
-   via Cloud PC / Bastion / VPN                     |
-            |  (secure, direct)                     v
-            |                        +------------------------------+   HUB sub
-            |                        |  Stack A: Hub AI Gateway      |
-            |                        |  Azure API Management (v2)    |
-            |                        |  - per-team key + token limit |
-            |                        |  - token metrics (showback)   |
-            |                        |  - MI auth to each Foundry    |
-            |                        +------------------------------+
-            |                           |  (private: VNet integ.+peering+DNS)
-            v                           v
-   +--------------------------------------------------+   each in its OWN subscription
-   | Stack B: sandbox   (applied-ai / client-innov / danielle)
-   |   Foundry (private)  <-- developers build here
-   |   + Search + Storage + Key Vault (private, per team)
-   |   + model allow-list policy + budget
-   +--------------------------------------------------+
-```
+![Hub-and-spoke AI gateway architecture](diagrams/hub-and-spoke-gateway.drawio.png)
 
 - **Developer plane (solid, left):** teams reach *their* Foundry directly and securely.
 - **Runtime plane (right):** apps call models through the hub gateway.
