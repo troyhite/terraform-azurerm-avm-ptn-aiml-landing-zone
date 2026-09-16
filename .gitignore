@@ -44,6 +44,9 @@ avm.tflint.merged.hcl
 avm.tflint_example.merged.hcl
 avm.tflint_module.merged.hcl
 *tfplan*
+apply*.txt
+destroy*.txt
+plan*.txt
 *.md.tmp
 # MacOS
 .DS_Store

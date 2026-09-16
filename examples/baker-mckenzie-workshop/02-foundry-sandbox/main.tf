@@ -51,8 +51,10 @@ module "naming" {
 # =====================================================================
 
 locals {
-  # name_prefix must be <=10 lowercase alphanumerics. Strip hyphens from the team.
-  name_prefix = substr(replace(var.team_name, "-", ""), 0, 10)
+  # name_prefix must be short: the Foundry storage naming pattern appends
+  # "<key>fndrysa<token>" (~16 chars) and the account name cap is 24, so keep the
+  # prefix <= 7. Strip hyphens and truncate the team name.
+  name_prefix = substr(replace(var.team_name, "-", ""), 0, 7)
 
   # Showback + governance tags applied to every resource. Derrick's cost view is
   # a filter on these. The ethical-wall / residency story lives here too.
@@ -74,8 +76,13 @@ locals {
   model_catalog = {
     "gpt-4.1"                = { format = "OpenAI", version = "2025-04-14", scale_type = var.model_deployment_type }
     "gpt-4o"                 = { format = "OpenAI", version = "2024-11-20", scale_type = var.model_deployment_type }
-    "text-embedding-3-large" = { format = "OpenAI", version = "1", scale_type = "Standard" }
-    "text-embedding-3-small" = { format = "OpenAI", version = "1", scale_type = "Standard" }
+    # Embedding models often lack Standard/DataZone SKUs in a given region (e.g.
+    # text-embedding-3-large has no Standard SKU in centralus), so pin them to
+    # GlobalStandard for broad availability. Note: embeddings are then processed
+    # globally - acceptable for most RAG, but call it out if strict residency is
+    # required for the embedded text.
+    "text-embedding-3-large" = { format = "OpenAI", version = "1", scale_type = "GlobalStandard" }
+    "text-embedding-3-small" = { format = "OpenAI", version = "1", scale_type = "GlobalStandard" }
   }
 
   # Render the allow-list into actual Foundry model deployments.
@@ -147,17 +154,14 @@ module "ai_landing_zone" {
     }
   }
 
-  # Link the module-created private DNS zones to the HUB VNet as well, so the hub
-  # APIM resolves this sandbox's Foundry (and other) private endpoints. This is
-  # the DNS half of the private-mesh gateway path.
-  private_dns_zones = {
-    network_links = {
-      hub = {
-        vnetlinkname = "link-to-hub-${local.name_prefix}"
-        vnetid       = var.hub_vnet_resource_id
-      }
-    }
-  }
+  # NOTE: the sandbox VNet still PEERS to the hub (above) for network reachability.
+  # We intentionally do NOT link this sandbox's private DNS zones to the hub VNet:
+  # a hub VNet can link to only one zone per namespace, and another sandbox on the
+  # same homelab hub already linked its privatelink.* zones there. The sandbox's own
+  # zones are linked to its own VNet automatically, so it is fully self-resolving.
+  # Hub-side resolution for the AI gateway is handled separately in Stack A (it is
+  # not solvable by naive per-sandbox hub links when multiple sandboxes share a hub).
+  private_dns_zones = {}
 
   # No gateway/firewall/bastion/VMs in the sandbox. The gateway lives in the hub
   # (Stack A). VMs are off because governed subscriptions force Key Vault private,
@@ -171,6 +175,11 @@ module "ai_landing_zone" {
   bastion_definition  = { deploy = false }
   buildvm_definition  = { deploy = false }
   jumpvm_definition   = { deploy = false }
+
+  # Container Apps hosting tier is not needed for the Foundry + gateway demo, and
+  # its AKS-backed environment hit capacity limits in Central US. Disable it -
+  # nothing in this module depends on it (main.genai_app_resources.tf is empty).
+  container_app_environment_definition = { deploy = false }
   app_gateway_definition = {
     deploy                = false
     backend_address_pools = {}

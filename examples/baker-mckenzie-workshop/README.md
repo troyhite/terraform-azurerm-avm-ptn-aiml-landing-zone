@@ -115,7 +115,7 @@ Stack A registration delta. Keep your tested deployment up as the fallback.
 ## Pre-register resource providers (per subscription)
 
 ```pwsh
-foreach ($rp in "Microsoft.CognitiveServices","Microsoft.MachineLearningServices","Microsoft.Search","Microsoft.Storage","Microsoft.KeyVault","Microsoft.Network","Microsoft.App","Microsoft.ApiManagement","Microsoft.OperationalInsights","Microsoft.Authorization","Microsoft.PolicyInsights","Microsoft.DocumentDB","Microsoft.ContainerRegistry") {
+foreach ($rp in "Microsoft.CognitiveServices","Microsoft.MachineLearningServices","Microsoft.Search","Microsoft.Storage","Microsoft.KeyVault","Microsoft.Network","Microsoft.App","Microsoft.ApiManagement","Microsoft.Web","Microsoft.OperationalInsights","Microsoft.Authorization","Microsoft.PolicyInsights","Microsoft.DocumentDB","Microsoft.ContainerRegistry") {
   az provider register --namespace $rp
 }
 ```
@@ -127,6 +127,34 @@ subscription (UAA is required for the RBAC assignments - Contributor alone gets 
 403). For the reverse hub<->sandbox peering, you also need write access to the hub
 VNet's resource group.
 
+## Stack A gateway: hardening & proof (deployed live)
+
+Stack A (the APIM StandardV2 hub gateway) was deployed into the demo hub and a live
+chat completion was driven **through the gateway to Stack B's private Foundry** -
+`gpt-4.1` replied and per-team token metrics flowed to the hub Log Analytics
+workspace. That single call exercises the whole architecture: public gateway ->
+subscription-key auth -> APIM **managed-identity** auth to the private Foundry ->
+**central Private DNS** resolution -> **VNet integration + peering** to the private
+endpoint at `192.168.8.x`.
+
+Three StandardV2 VNet-integration gotchas were hardened into `01-hub-ai-gateway`
+(each cost a failed apply first, so they're worth calling out):
+
+1. **Subnet delegation** - the APIM integration subnet must be delegated to
+   `Microsoft.Web/serverFarms`. (Classic Developer/Premium External injection must
+   NOT have this delegation - the example toggles it on `apim_is_v2`.)
+2. **`Microsoft.Web` resource provider** must be registered in the gateway
+   subscription, or the create fails with `SubnetSubscriptionMustBeRegisteredWithMicrosoftWeb`.
+   (Now in the pre-register list above.)
+3. **An NSG is still required** on the integration subnet even for StandardV2
+   (`NetworkSecurityGroupNotFound`), and APIM must depend on the NSG *association*
+   explicitly - otherwise Terraform races the association and APIM deploys before the
+   NSG is attached. The example adds `depends_on` on the association.
+
+Fallback: if v2 VNet integration ever errors on a given provider version, set
+`apim_sku = "Developer_1"` - the config drops the delegation and keeps the NSG
+automatically.
+
 ## Key decisions baked in
 
 | Area | Choice | Why |
@@ -137,6 +165,83 @@ VNet's resource group.
 | Cosmos | wired, disabled | Keeps the deploy lean. Set `enable_cosmos = true` to include agent state. |
 | Promotion | `environment` posture toggle + diagram | Concept without a fragile live migration. |
 | Data residency | DataZone + per-team isolation (default) | Ethical walls / client confidentiality. |
+
+## Centralized Private DNS: the prerequisite for the multi-sandbox gateway
+
+The single most important platform-foundation point for scaling this pattern.
+
+**The problem (hit live during the deploy):** with `flag_platform_landing_zone =
+false`, each sandbox creates its **own** copy of the `privatelink.*` Private DNS
+zones. When a second sandbox on the **same hub** tries to link its copies, Azure
+rejects it: *"A virtual network cannot be linked to multiple zones with overlapping
+namespaces."* A hub VNet can link to only one zone per namespace. So naive
+per-sandbox hub linking does not scale, and the hub cannot resolve every sandbox's
+private Foundry - which is exactly what the AI gateway needs.
+
+**Microsoft best practice (CAF: "Private Link and DNS integration at scale"):**
+centralize Private DNS. One set of `privatelink.*` zones, owned by the platform /
+connectivity subscription, deployed once. Three components:
+
+1. **Central Private DNS zones** in the connectivity subscription (the hub). The hub
+   VNet and every spoke VNet link to this *single* set - never per-spoke copies.
+2. **Azure Policy `DeployIfNotExists`** assigned at the management-group level, which
+   auto-creates a Private DNS Zone Group on *every* private endpoint pointing at the
+   central zones. Teams deploy PEs freely; DNS is wired automatically, no collisions.
+3. **Central DNS resolution** via a hub **Azure Private DNS Resolver** (or hub
+   DNS/firewall proxy) so on-prem and cross-spoke lookups resolve the private
+   endpoints.
+
+**How this maps to the module:** `flag_platform_landing_zone = true` (Bicep's
+`ailz-integrated` + `policyManagedPrivateDns`; Terraform
+`private_dns_zones.azure_policy_pe_zone_linking_enabled = true`) is the
+best-practice mode - the sandbox registers into the central zones instead of
+creating its own. `flag_platform_landing_zone = false` (used for the standalone
+sandbox here) is fine for a single isolated deployment but breaks the moment a
+second sandbox attaches to the same hub.
+
+**For Baker McKenzie's real environment, the prescriptive sequence is:**
+1. Platform team stands up the central `privatelink.*` zones once in the
+   connectivity subscription.
+2. Assign the DINE Private DNS policy at the management-group scope so every team's
+   private endpoints auto-register.
+3. Each Foundry sandbox deploys with `flag_platform_landing_zone = true`, pointing
+   at the central zones. Foundry, Search, Cosmos, Storage, and Key Vault private
+   endpoints all resolve through the hub - and the AI gateway resolves every
+   sandbox's Foundry with zero collisions.
+
+The collision is the concrete evidence for *why* centralized DNS is a prerequisite,
+not an optional nicety. **Discovery question:** does Baker McKenzie already have (or
+want help standing up) centralized Private DNS zones + the DINE policy in their
+platform landing zone? Their answer determines whether the gateway pattern is
+production-ready or needs that foundation first.
+
+### Reference implementation: proven in the demo hub
+
+This exact pattern is stood up and running in the demo hub subscription, so the
+workshop can show it, not just describe it:
+
+- **21 central `privatelink.*` zones** live in the hub's `networking-rg` (Foundry:
+  `cognitiveservices`, `openai`, `services.ai`; plus `search`, `blob/file/queue/table/dfs/web`,
+  `vaultcore`, `documents` + the Cosmos API zones, `azurecr`, `azure-api`, `azconfig`).
+  All **21 are VNet-linked to the hub VNet** with registration disabled.
+- **A custom initiative** (`hub-central-private-dns`) bundles the built-in
+  `DeployIfNotExists` policies for Cognitive/AI Services, AI Search, Key Vault,
+  Storage blob, and Cosmos (Sql) - each pointed at the corresponding central zone -
+  assigned **once** with a single **system-assigned managed identity**.
+- The policy identity holds **Network Contributor** (subscription) + **Private DNS
+  Zone Contributor** (`networking-rg`), so any new private endpoint in the governed
+  scope auto-gets a Private DNS Zone Group pointing at the central zones - no manual
+  per-PE DNS wiring.
+- A hub **Azure Private DNS Resolver** (inbound endpoint) provides the cross-network
+  resolution front door for on-prem / cross-spoke lookups.
+
+**Scope caveat (say this out loud in the room):** in the demo hub the initiative is
+assigned at **subscription scope** as a faithful reference - the tenant's sponsored
+subscriptions can't be re-parented under a management group I control. In Baker
+McKenzie's environment the *same* assignment lives at the **platform / connectivity
+management group** so every landing-zone subscription auto-registers. The mechanism
+is identical; only the scope moves up. That's a platform-team control, not a
+per-workload one.
 
 ## Callout: Bicep vs Terraform - Foundry network posture (not at parity)
 

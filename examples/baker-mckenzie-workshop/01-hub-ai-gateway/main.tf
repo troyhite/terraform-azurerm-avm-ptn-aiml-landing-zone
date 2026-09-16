@@ -30,6 +30,12 @@ locals {
   hub_vnet_parts = split("/", var.hub_vnet_resource_id)
   hub_vnet_rg    = local.hub_vnet_parts[4]
   hub_vnet_name  = local.hub_vnet_parts[8]
+
+  # v2 tiers (BasicV2/StandardV2/PremiumV2) use outbound VNet integration, which
+  # REQUIRES the subnet be delegated to Microsoft.Web/serverFarms and does NOT need
+  # the classic control-plane NSG. Classic tiers (Developer/Premium) use External/
+  # Internal injection: NO delegation, but an NSG allowing inbound 3443 is required.
+  apim_is_v2 = length(regexall("V2_", var.apim_sku)) > 0
 }
 
 resource "azurerm_resource_group" "hub" {
@@ -47,6 +53,61 @@ resource "azurerm_subnet" "apim" {
   resource_group_name  = local.hub_vnet_rg
   virtual_network_name = local.hub_vnet_name
   address_prefixes     = [var.apim_subnet_address_prefix]
+
+  # Only for v2 VNet integration. Removed automatically if you fall back to a
+  # classic SKU (Developer_1), which must not carry this delegation.
+  dynamic "delegation" {
+    for_each = local.apim_is_v2 ? [1] : []
+    content {
+      name = "apim-v2-vnet-integration"
+      service_delegation {
+        name    = "Microsoft.Web/serverFarms"
+        actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
+      }
+    }
+  }
+}
+
+# NSG on the integration subnet. REQUIRED for every VNet mode - classic External/
+# Internal injection needs inbound 3443/6390, and StandardV2 outbound integration
+# also requires an NSG to be associated (even though its rules can be permissive).
+resource "azurerm_network_security_group" "apim" {
+  name                = "nsg-apim-gateway"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.hub.name
+
+  security_rule {
+    name                       = "APIM-Management-3443"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "3443"
+    source_address_prefix      = "ApiManagement"
+    destination_address_prefix = "VirtualNetwork"
+  }
+  security_rule {
+    name                       = "AzureLoadBalancer-6390"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "6390"
+    source_address_prefix      = "AzureLoadBalancer"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  tags = {
+    workload   = "ai-gateway-hub"
+    managed-by = "terraform"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "apim" {
+  subnet_id                 = azurerm_subnet.apim.id
+  network_security_group_id = azurerm_network_security_group.apim.id
 }
 
 # The gateway. System-assigned identity is used to authenticate to each Foundry.
@@ -58,6 +119,11 @@ resource "azurerm_api_management" "gateway" {
   publisher_email      = var.publisher_email
   sku_name             = var.apim_sku
   virtual_network_type = "External"
+
+  # The subnet must have its NSG associated BEFORE APIM deploys into it, otherwise
+  # Azure rejects the create with NetworkSecurityGroupNotFound (the association is
+  # not an implicit dependency of the subnet reference below).
+  depends_on = [azurerm_subnet_network_security_group_association.apim]
 
   virtual_network_configuration {
     subnet_id = azurerm_subnet.apim.id

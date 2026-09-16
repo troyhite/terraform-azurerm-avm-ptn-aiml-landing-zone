@@ -1,0 +1,50 @@
+[
+  {
+    "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/c4bc6f10-cb41-49eb-b000-d5ab82e2a091",
+    "policyDefinitionReferenceId": "CognitiveServices",
+    "parameters": {
+      "privateDnsZoneId": {
+        "value": "/subscriptions/<hub-subscription-id>/resourceGroups/networking-rg/providers/Microsoft.Network/privateDnsZones/privatelink.cognitiveservices.azure.com"
+      }
+    }
+  },
+  {
+    "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/fbc14a67-53e4-4932-abcc-2049c6706009",
+    "policyDefinitionReferenceId": "AISearch",
+    "parameters": {
+      "privateDnsZoneId": {
+        "value": "/subscriptions/<hub-subscription-id>/resourceGroups/networking-rg/providers/Microsoft.Network/privateDnsZones/privatelink.search.windows.net"
+      }
+    }
+  },
+  {
+    "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/ac673a9a-f77d-4846-b2d8-a57f8e1c01d4",
+    "policyDefinitionReferenceId": "KeyVault",
+    "parameters": {
+      "privateDnsZoneId": {
+        "value": "/subscriptions/<hub-subscription-id>/resourceGroups/networking-rg/providers/Microsoft.Network/privateDnsZones/privatelink.vaultcore.azure.net"
+      }
+    }
+  },
+  {
+    "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/75973700-529f-4de2-b794-fb9b6781b6b0",
+    "policyDefinitionReferenceId": "StorageBlob",
+    "parameters": {
+      "privateDnsZoneId": {
+        "value": "/subscriptions/<hub-subscription-id>/resourceGroups/networking-rg/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net"
+      }
+    }
+  },
+  {
+    "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/a63cc0bd-cda4-4178-b705-37dc439d3e0f",
+    "policyDefinitionReferenceId": "CosmosDB",
+    "parameters": {
+      "privateEndpointGroupId": {
+        "value": "Sql"
+      },
+      "privateDnsZoneId": {
+        "value": "/subscriptions/<hub-subscription-id>/resourceGroups/networking-rg/providers/Microsoft.Network/privateDnsZones/privatelink.documents.azure.com"
+      }
+    }
+  }
+]
