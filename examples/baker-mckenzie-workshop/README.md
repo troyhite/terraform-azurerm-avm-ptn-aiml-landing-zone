@@ -1,354 +1,499 @@
-# Baker McKenzie AI Landing Zone workshop
+# Azure AI Landing Zone — Foundry Governance Reference
 
-A tailored, two-stack Terraform example for the Foundry governance / AI sandbox
-workshop. It demonstrates the **AI Gateway Landing Zone** pattern: many governed
-Foundry sandboxes (one per team / subscription) fronted by a single shared API
-Management gateway in the hub.
+A working, Terraform-based reference implementation of the **Azure AI Landing Zone**
+patterns, tailored to a subscription-per-use-case model. It shows how many governed
+Azure AI Foundry sandboxes — one per team — can run securely and be fronted by a
+single shared AI gateway, so teams innovate quickly while the platform keeps control
+of networking, identity, model governance, policy, and cost.
 
-> This is a workshop/demo asset. It is built on the Azure AI Landing Zone AVM
-> module (`../../`) and follows the Microsoft best-practice patterns at
-> <https://azure.github.io/AI-Landing-Zones/>.
+It is built on the Azure AI Landing Zone Azure Verified Module and follows the
+Microsoft best-practice guidance at <https://azure.github.io/AI-Landing-Zones/>.
 
-## The story it tells
+---
 
-1. **Governed sandbox as a product.** A team gets a Foundry environment only by
-   filling an *intake contract* (owner, data classification, residency, model
-   allow-list, budget). No sandbox exists without those decisions.
-2. **Isolation and residency by default.** Foundry is private; models default to
-   **DataZone** deployments (data stays in-geo); data resources are per-team - the
-   ethical-wall / client-confidentiality story for a law firm.
-3. **Secure self-service for developers.** Developer teams sign in to *their* sandbox
-   Foundry directly - portal, playground, agents, prompt flow, VS Code - to build and
-   experiment. "Secure" means Entra ID auth (no keys), least-privilege RBAC scoped to
-   their own project, Conditional Access / MFA, and private networking - not a locked
-   door. Teams get in and build; the guardrails travel with them.
-4. **A governed runtime front door (optional, for apps).** When apps or shared
-   consumers need model inference, they go through one hub APIM gateway with per-team
-   keys, token limits (fair use), and per-team token metrics (showback). This is a
-   *runtime* concern - it is not how a developer experiments, and it is not required
-   to use the sandbox.
-5. **Governance as code + enforced by platform.** The model allow-list is also an
-   Azure Policy (audit -> deny). Reinforced by the live proof that a management-
-   group policy overrode even an Owner (see the governed-subscription note below).
+## What this demonstrates
+
+1. **A governed sandbox as a product.** A team gets a Foundry environment by
+   completing an intake contract — owner, data classification, data residency,
+   approved-model list, and budget. No sandbox exists without those decisions, so
+   governance is built in from the first deployment rather than bolted on later.
+2. **Isolation and residency by default.** Foundry is deployed private (private
+   endpoints, no public data plane); chat models default to **DataZone** deployments
+   so data stays in-geography; data resources are separated per team. This is the
+   ethical-wall / client-confidentiality foundation a professional-services firm
+   needs.
+3. **Secure self-service for developers.** Developer teams sign in to *their own*
+   sandbox Foundry directly — portal, playground, agents, prompt flow, VS Code — to
+   build and experiment. "Secure" here means Microsoft Entra ID authentication (no
+   shared keys), least-privilege RBAC scoped to their own project, Conditional
+   Access / MFA, and private networking. The guardrails travel with the team; the
+   door is not locked.
+4. **A governed runtime front door (optional).** When applications or shared
+   consumers need model inference, they call one hub AI gateway (Azure API
+   Management) with per-team keys, per-team token limits for fair use, and per-team
+   token metrics for showback. This is a *runtime* concern — it is not how a
+   developer experiments, and it is not required to use a sandbox.
+5. **Governance expressed as code and enforced by the platform.** The approved-model
+   list is also an Azure Policy (audit first, then deny). Controls are enforced by
+   the platform, independent of any individual's permissions.
+
+---
+
+## The two patterns
+
+The Azure AI Landing Zone is delivered as two independently deployable patterns. A
+team can adopt the Foundry pattern alone and add the gateway later.
+
+| Pattern | What it is | When you use it |
+| --- | --- | --- |
+| **AI Foundry Landing Zone** | The per-team application environment: the Foundry account and project, models, data services (Storage, AI Search, Cosmos DB), Key Vault, observability, private networking. | Every team sandbox. |
+| **AI Gateway Landing Zone** | A shared Azure API Management front door for centralized model access: routing, per-team keys and quotas, token metrics, and policy. | When multiple teams share capacity and you need fair-use limits, usage attribution, and centralized control. |
+
+This reference deploys the Foundry pattern per team and fronts them with a single
+gateway.
+
+---
 
 ## Two access planes (read this before the architecture)
 
-The single most important framing: there are **two** ways into a sandbox, and they
-are different.
+The most important framing: there are **two** ways into a sandbox, and they are
+deliberately different.
 
 | Plane | Who | How | Secured by |
 | --- | --- | --- | --- |
-| **Developer / build** (primary) | Developer teams (humans) | Directly into their sandbox Foundry - portal, playground, agents, notebooks | Entra ID + least-privilege RBAC on their project, Conditional Access/MFA, private network access |
-| **Application / runtime** (secondary) | Deployed apps + shared consumers | Through the hub APIM gateway | Per-team subscription key + Entra, token limits, MI auth, token metrics (showback) |
+| **Developer / build** (primary) | Developer teams (people) | Directly into their sandbox Foundry — portal, playground, agents, notebooks | Entra ID + least-privilege RBAC on their project, Conditional Access / MFA, private network access |
+| **Application / runtime** (secondary) | Deployed apps + shared consumers | Through the hub AI gateway | Per-team subscription key + Entra, token limits, managed-identity auth, token metrics (showback) |
 
-The gateway governs *runtime consumption*. Developers experimenting do **not** go
-through it - they use their sandbox Foundry directly, secured by identity and network.
+The gateway governs *runtime consumption*. Developers who are experimenting do **not**
+go through it — they use their sandbox Foundry directly, secured by identity and
+network.
+
+---
 
 ## Architecture
 
 ![Hub-and-spoke AI gateway architecture](diagrams/hub-and-spoke-gateway.drawio.png)
 
-- **Developer plane (solid, left):** teams reach *their* Foundry directly and securely.
-- **Runtime plane (right):** apps call models through the hub gateway.
-- **Stack A** (`01-hub-ai-gateway/`) - deploy **once** into the hub subscription (runtime plane).
-- **Stack B** (`02-foundry-sandbox/`) - deploy **per team**, each in its own sub.
-- Live demo deploys Stack A + one Stack B; teams 2/3 are shown via config + diagram.
+- **Developer plane (left):** teams reach *their* Foundry directly and securely.
+- **Runtime plane (right):** applications call models through the hub gateway.
+- **Stack A** (`01-hub-ai-gateway/`) — deployed **once** into the hub subscription
+  (runtime plane).
+- **Stack B** (`02-foundry-sandbox/`) — deployed **per team**, each in its own
+  subscription.
+
+Because this Terraform landing-zone module deploys Foundry **private-only**, the
+gateway reaches each sandbox privately over the network — a private-mesh posture that
+suits a confidentiality-first environment.
+
+---
 
 ## How developers reach a private Foundry
 
-Because the sandbox Foundry is **private** (private endpoints, no public data plane),
+Because the sandbox Foundry is private (private endpoints, no public data plane),
 developer access must originate from a network that can route to and resolve the
-private endpoint. Choose one (this is a real design decision for the customer):
+private endpoint. This is a real design decision to make with your platform team.
+Choose one:
 
-- **Cloud PC (Windows 365) or Azure Virtual Desktop** joined to a management VNet
-  peered to the sandbox - developers get a browser inside the network. Cleanest for
+- **Cloud PC (Windows 365) or Azure Virtual Desktop**, joined to a management VNet
+  peered to the sandbox — developers get a browser inside the network. Cleanest for
   "many developers, no corporate ExpressRoute."
-- **Corporate ExpressRoute / VPN + Azure Private DNS Resolver** in the hub - developers
-  use their own laptops; the corp network resolves `privatelink.*` and routes to the
-  private endpoints. Best long-term for an enterprise; more upfront networking.
-- **Jumpbox + Bastion** in the sandbox/management VNet - fine for a few operators or a
-  demo, not for a whole developer team. (Note: the AVM jump VM cannot be provisioned
-  in a policy-locked subscription - see the governed-subscription section - so create
-  it manually with an inline password, or use Cloud PC/AVD.)
+- **Corporate ExpressRoute / VPN + Azure Private DNS Resolver** in the hub —
+  developers use their own laptops; the corporate network resolves the `privatelink.*`
+  zones and routes to the private endpoints. Best long-term enterprise pattern; more
+  upfront networking.
+- **Jump box + Azure Bastion** in the sandbox / management VNet — appropriate for a
+  few operators, not a whole developer team.
 
-Whichever path, access is still gated by **Entra ID + RBAC** (below): being on the
-network is necessary but not sufficient.
+Whichever path you choose, access is still gated by **Entra ID + RBAC** (below):
+being on the network is necessary but not sufficient.
 
-## Developer access is RBAC, not keys
+---
 
-Set `developer_group_object_id` in the sandbox intake to the team's Entra ID **group**.
-Stack B grants that group **Azure AI Developer** on the sandbox Foundry - least
-privilege, scoped to this team's account/project only (ethical walls between teams).
-Combined with `disable_local_auth = true` (no shared keys), developers authenticate as
-themselves, and everything they do is attributable. Layer Conditional Access / MFA /
-PIM on the group in Entra for the full "secure manner."
+## Data source connectivity — getting data *into* Foundry, securely
 
-## Run order
+If the gateway governs the outbound path (applications → models), this is the
+**inbound** path Ben raised on day 1: how do sandboxes reach the data they need —
+document stores, databases, client data, on-premises systems — securely and with
+governance underneath. It is the "reverse flow of the gateway," and it is a
+first-class design decision, not an afterthought.
+
+### The Foundry connection model
+
+Foundry projects reach data through typed **connections** — to Azure AI Search,
+Azure Storage / OneLake, Azure SQL / Cosmos DB, and external APIs (including Bing
+grounding). Two principles keep this governed:
+
+- **Identity, not keys.** Connections authenticate with the project's **managed
+  identity** and Entra ID wherever the target supports it, so data access is
+  attributable and there is no shared secret to leak. The project identity is granted
+  a **least-privilege, data-plane** role on the *specific* store (e.g. Storage Blob
+  Data Contributor, Search Index Data Contributor — the service-to-service roles in
+  the RBAC model above), never blanket Owner over a data estate.
+- **Project-scoped.** A connection belongs to one team's project. Team A's sandbox
+  cannot see Team B's data source — the same ethical wall the rest of the pattern
+  enforces.
+
+### The private ingress path
+
+Data flows to Foundry over the **private network**, not the public internet:
+
+1. **Private endpoints on the data sources.** Each in-scope store (Storage, AI Search,
+   SQL, Cosmos, etc.) is fronted by a private endpoint and resolved through the
+   **central Private DNS** described above — the same foundation that lets the gateway
+   resolve Foundry.
+2. **Foundry managed-network egress control.** Foundry's managed network governs
+   outbound access from agents and prompt flows: outbound is denied by default and
+   only **approved private-endpoint targets** (and, where needed, explicit FQDN
+   allow-lists) are permitted. Agents cannot exfiltrate to arbitrary destinations.
+3. **On-premises and corporate data** are reached through the hub over
+   ExpressRoute / VPN, with the hub's Private DNS Resolver resolving the private
+   endpoints — so a connector to an on-prem database rides the private path, never a
+   public hop.
+
+```mermaid
+flowchart LR
+  subgraph SANDBOX[Foundry sandbox · project]
+    AGENT["Agents / prompt flow / RAG"]
+    MNET["Managed network<br/>egress: deny by default,<br/>approved PEs only"]
+  end
+  subgraph DATA[In-scope data sources]
+    SRCH["AI Search"]
+    STOR["Storage / OneLake"]
+    SQL["Azure SQL / Cosmos"]
+    ONPREM["On-prem / corporate data"]
+  end
+  AGENT --> MNET
+  MNET -.->|"private endpoint · MI auth · central DNS"| SRCH
+  MNET -.->|"private endpoint · MI auth · central DNS"| STOR
+  MNET -.->|"private endpoint · MI auth · central DNS"| SQL
+  MNET -.->|"hub ExpressRoute/VPN + DNS resolver"| ONPREM
+```
+
+### Governance "underneath" (Ben's phrase)
+
+- **Least-privilege data-plane RBAC** on each connected store, scoped to the project
+  identity (see the RBAC model).
+- **Data classification** carried in the sandbox intake, so the sensitivity of what a
+  team can connect to is a decision, not a default.
+- **Cataloging, lineage, and DLP** via Microsoft Purview across the connected sources.
+- **Access logging** to the hub Log Analytics workspace for audit — every data-plane
+  action against a connected store is attributable to the project identity.
+
+### Discovery questions for your team
+
+- Which data sources are in scope for the first sandbox (Applied AI), and what is the
+  **highest data classification** any of them carries?
+- Are those sources already **private-endpoint-enabled**, and do they resolve through
+  the central Private DNS zones?
+- Which live **on-premises** vs in Azure — i.e. which need the hub ExpressRoute / VPN
+  path vs a direct private endpoint?
+- Who **approves** a new data connection for a sandbox, and is that a governance-review
+  gate in the promotion lifecycle?
+
+## RBAC model — minimally viable, on two axes
+
+Least privilege = grant the **narrowest plane** the job needs, at the **smallest
+scope**. The templates already do this for the automatic service-to-service wiring;
+the decision your teams own is the user-to-service side (which people get what).
+
+![Foundry + Gateway RBAC quadrant](diagrams/foundry-gateway-rbac.png)
+
+Two axes:
+
+- **Who is calling** — **user-to-service** (a person or Entra group signs in) vs
+  **service-to-service** (a managed identity, no person in the loop).
+- **Which plane** — **control plane** (Azure Resource Manager: create, configure,
+  delete the resource) vs **data plane** (the resource's own endpoint: call the
+  model, read a blob, query an index, read a secret).
+
+Because Foundry runs **key-free** (local authentication disabled, managed identities
+only), even "who can call the model" is an explicit, auditable role grant rather than
+a shared key in an app config.
+
+### Service-to-service (wired automatically by the templates — no person touches these)
+
+| Role | Holder (managed identity) | Target | Plane | Purpose |
+| --- | --- | --- | --- | --- |
+| Cognitive Services OpenAI User | AI Gateway (APIM) managed identity | Foundry account | Data | The key-free inference hop |
+| Storage Blob Data Contributor / Owner | Foundry **project** identity | Storage | Data | Project files, threads, uploads |
+| Search Index Data Contributor | Foundry **project** identity | AI Search | Data | Read/write vector-index documents (RAG) |
+| Search Service Contributor | Foundry **project** identity | AI Search | Control | Create/manage indexes and indexers |
+| Cosmos DB Operator | Foundry **project** identity | Cosmos DB | Control | Manage the account for agent memory — **cannot read data or keys** |
+
+Note the deliberate split: the project identity gets a control-plane role to *shape*
+a resource and a scoped data-plane role only where it must *use* it — never blanket
+Owner/Contributor over the data.
+
+### User-to-service (the decision your teams own)
+
+| Persona | Role | Scope | Plane |
+| --- | --- | --- | --- |
+| Developer / data scientist | **Azure AI Developer** | Project | Build (spans control + data at project scope) |
+| Project owner / lead | **Azure AI Project Manager** | Project | Control |
+| Platform / IT admin | **Azure AI Account Owner** (PIM-gated) | Account | Control |
+| Security / auditor | **Reader** + **Cognitive Services Usages Reader** | Account | Read-only |
+
+**Azure AI Developer** is the keystone role. It lets a developer sign in as
+themselves (Entra, no keys) and build inside their project — deployments, connections,
+prompt flows, evaluations, playground — **without** the power to manage the account,
+change networking, or assign roles. Scoped to one team's project, it is the ethical
+wall between teams. Assign it to the team's Entra ID **group**
+(`developer_group_object_id` in the sandbox intake), and layer Conditional Access /
+MFA / PIM on that group.
+
+> **Hardening note (recommended before production):** the deployment identity is
+> granted **Key Vault Administrator** during provisioning as a bootstrap convenience.
+> For production, reduce this to **Key Vault Secrets User** (data-plane read) or
+> **Key Vault Secrets Officer**, PIM-gated — it does not need standing administrative
+> rights on the vault.
+
+The full role-by-role breakdown, including the day-2 talk track, is in
+[`rbac-model.md`](rbac-model.md).
+
+---
+
+## Governance and controls enforced
+
+Everything below is enforced by the two stacks as deployed. The effects shown are the
+defaults used in the reference `applied-ai` sandbox.
+
+### Model governance — Azure Policy
+
+- Built-in policy *"Azure Machine Learning Deployments should only use approved
+  Registry Models"* — Foundry model deployments use the Azure Machine Learning
+  resource provider, so this governs Foundry.
+- **Scope:** the sandbox resource group, assigned per sandbox.
+- **Restricts** model deployments to approved publishers, derived from the intake
+  `allowed_models` list (reference: `gpt-4.1`, `text-embedding-3-large`); optionally
+  pinnable to exact model versions.
+- **Effect:** starts in **Audit** (teams learn what they need, violations are flagged
+  not blocked); flip to **Deny** to hard-block unapproved models once the catalog is
+  agreed. In production, assign this class of policy at the management-group level so
+  it applies to every sandbox subscription and overrides even a subscription Owner.
+
+### Data residency
+
+Chat models deploy as **DataZoneStandard**, keeping inference within the geographic
+data zone — the ethical-wall answer for client-confidential matters. The deployment
+SKU is governed by the module, not left to the team.
+
+### Content safety (Responsible AI)
+
+The Foundry account is provisioned with Azure AI Content Safety available (prompt
+shields, groundedness, protected-material checks) as the baseline responsible-AI
+control surface.
+
+### Network and data-plane controls
+
+Foundry and its data services are private (private endpoints, no public data plane).
+Access is via managed identity and Entra ID RBAC — no shared keys anywhere.
+
+### Cost guardrail
+
+Each sandbox includes a resource-group budget (reference: $500/month) with alerts at
+80% and 100% of actual spend; production sandboxes add a forecasted-overspend alert.
+This is the per-sandbox half of showback; the gateway adds per-team token metrics.
+
+### Gateway governance (per team, at the AI gateway)
+
+Applied as an Azure API Management policy on each team's API:
+
+- **Managed-identity authentication** to the private Foundry — callers never hold a
+  Foundry key.
+- **Backend routing** to that team's Foundry only (isolation at the gateway).
+- **Per-team token limit** for fair use — over-limit calls return HTTP 429.
+- **Per-team token metrics** emitted to the hub Log Analytics workspace for showback.
+- **Subscription key required** — the key is the per-team access boundary; a request
+  without one returns HTTP 401.
+
+### Governance posture summary
+
+| Control | Where | Reference effect | Production move |
+| --- | --- | --- | --- |
+| Approved models only | Azure Policy on sandbox RG | Audit | Flip to Deny; assign at management group |
+| Data residency | Model deployment SKU | DataZoneStandard | Keep; per data class |
+| Content Safety | Foundry account | Enabled | Add required RAI review gate |
+| Private networking + DNS | Module posture + hub DNS | Private-only | Policy-managed DNS at management group |
+| Identity, not keys | RBAC + gateway managed identity | Enforced | PIM / Conditional Access on the groups |
+| Per-team token ceiling | Gateway policy | ~1k TPM → 429 | Tune per team / SLA |
+| Per-team showback | Gateway token metrics → Log Analytics | Enabled | Wire to cost dashboard |
+| Spend guardrail | RG budget + alerts | $500/mo, 80/100% | Forecast alert in production |
+
+---
+
+## Centralized Private DNS: the prerequisite for the multi-sandbox gateway
+
+The most important platform-foundation point for scaling this pattern.
+
+**The problem:** if each sandbox creates its **own** copy of the `privatelink.*`
+Private DNS zones, a second sandbox on the **same hub** cannot link its copies — Azure
+allows only one zone per namespace per VNet. Per-sandbox hub linking therefore does
+not scale, and the hub cannot resolve every sandbox's private Foundry, which is
+exactly what the AI gateway needs.
+
+**Microsoft best practice (Cloud Adoption Framework — "Private Link and DNS
+integration at scale"):** centralize Private DNS. One set of `privatelink.*` zones,
+owned by the platform / connectivity subscription, deployed once. Three components:
+
+1. **Central Private DNS zones** in the connectivity subscription. The hub VNet and
+   every spoke VNet link to this *single* set — never per-spoke copies.
+2. **Azure Policy `DeployIfNotExists`** assigned at the management-group level, which
+   auto-registers every new private endpoint into the central zones. Teams deploy
+   freely; DNS wires itself, with no collisions.
+3. **Central resolution** via a hub **Azure Private DNS Resolver** (or hub DNS /
+   firewall proxy) so on-premises and cross-spoke lookups resolve the private
+   endpoints.
+
+**Prescriptive sequence for your environment:**
+
+1. The platform team stands up the central `privatelink.*` zones once in the
+   connectivity subscription.
+2. Assign the DeployIfNotExists Private DNS policy at the management-group scope so
+   every team's private endpoints auto-register.
+3. Each Foundry sandbox registers into the central zones. Foundry, AI Search, Cosmos
+   DB, Storage, and Key Vault private endpoints all resolve through the hub — and the
+   AI gateway resolves every sandbox's Foundry with no collisions.
+
+### Validated reference implementation
+
+This pattern has been stood up and exercised end to end in a reference environment, so
+it can be shown rather than only described:
+
+- A full set of central `privatelink.*` zones (Foundry: `cognitiveservices`, `openai`,
+  `services.ai`; plus `search`, Storage, `vaultcore`, Cosmos, `azurecr`, `azure-api`,
+  `azconfig`), all linked to the hub VNet with registration disabled.
+- A custom initiative bundling the built-in `DeployIfNotExists` policies for
+  Cognitive/AI Services, AI Search, Key Vault, Storage blob, and Cosmos — each pointed
+  at the corresponding central zone — assigned with a single managed identity holding
+  **Network Contributor** and **Private DNS Zone Contributor**, so any new private
+  endpoint auto-registers with no manual DNS wiring.
+- A hub **Azure Private DNS Resolver** as the cross-network resolution front door for
+  on-premises and cross-spoke lookups. In the reference environment, an on-premises
+  client resolves the sandbox's private Foundry to its private IP once conditional
+  forwarders point at the resolver — a live before/after proof that the private path
+  works.
+
+In production this same initiative is assigned at the **platform / connectivity
+management group** so every landing-zone subscription inherits it automatically. The
+mechanism is identical; only the scope moves up. This is a platform-team control, not
+a per-workload one.
+
+---
+
+## Foundry network posture: Bicep vs Terraform (not at parity)
+
+A useful implementation detail to be aware of: the two official infrastructure-as-code
+implementations of the AI Landing Zone do **not** currently treat the Foundry
+account's network posture the same way.
+
+- **Bicep** exposes network isolation as a first-class parameter and can deploy
+  Foundry **public or private** (it defaults to public). Setting
+  `networkIsolation = true` makes Foundry private; adding an IP allow-list gives
+  private + a public allow-list.
+- **This Terraform landing-zone module** deploys Foundry **private-only**. It sets
+  `create_private_endpoints = true` and does not surface the Foundry public-access
+  toggle, so the account resolves to public access disabled. (Other services such as
+  Key Vault, Storage, and AI Search *do* expose public toggles in Terraform — Foundry
+  specifically does not.)
+
+Net: with Bicep you choose Foundry public or private; with this Terraform module
+Foundry is private-only. That is why this reference uses the private-mesh path. Scope
+the statement to "the Terraform landing-zone module" and to the module version you
+deploy — these modules evolve quickly.
+
+---
+
+## Platform-enforced policy: governed (policy-locked) subscriptions
+
+Some subscriptions inherit a management-group Azure Policy that **forces Key Vault
+private-only** and cannot be overridden from inside the subscription — even an Owner
+cannot re-enable public access.
+
+Impact: the module's optional build / jump VMs cannot be provisioned in such a
+subscription, because during creation they write their admin password into the private
+Key Vault from the deployer's public IP, which the policy blocks. This is external
+governance working as intended, not a defect, so those VMs are disabled by default in
+this reference.
+
+This is a good illustration of the model: the platform policy refuses to expose the
+Key Vault regardless of operator rights — Zero Trust enforced by the platform, not by
+trust. The trade-off is that environment management happens over the private network
+rather than a public IP.
+
+**Demonstrating a live data-plane action** (with the VMs disabled and Foundry
+private): run it from a VM **inside a VNet where the private endpoints resolve** — for
+example a small VM created in the sandbox VNet with an inline admin password (no Key
+Vault write), reached via Azure Bastion. Private-endpoint FQDNs resolve automatically
+because the module links the DNS zones to the sandbox VNet.
+
+---
+
+## Deploy
 
 ```pwsh
-# 0) Pre-register resource providers in EACH target subscription (see below).
+# 0) Pre-register the required resource providers in EACH target subscription
+foreach ($rp in "Microsoft.CognitiveServices","Microsoft.MachineLearningServices","Microsoft.Search","Microsoft.Storage","Microsoft.KeyVault","Microsoft.Network","Microsoft.App","Microsoft.ApiManagement","Microsoft.Web","Microsoft.OperationalInsights","Microsoft.Authorization","Microsoft.PolicyInsights","Microsoft.DocumentDB","Microsoft.ContainerRegistry") {
+  az provider register --namespace $rp
+}
 
-# 1) Hub gateway - once, into the hub sub
+# 1) Hub gateway — once, into the hub subscription
 cd 01-hub-ai-gateway
-Copy-Item terraform.tfvars.example terraform.tfvars   # fill hub VNet + LAW ids
+Copy-Item terraform.tfvars.example terraform.tfvars   # fill hub VNet + Log Analytics ids
 az account set --subscription <hub-sub-id>
 terraform init; terraform apply        # leave registered_sandboxes empty for now
 
-# 2) First sandbox - into a team sub
+# 2) First sandbox — into a team subscription
 cd ../02-foundry-sandbox
 Copy-Item terraform.tfvars.example terraform.tfvars   # fill team intake + hub VNet id
 az account set --subscription <team-sub-id>
 terraform init; terraform apply
 terraform output register_in_stack_a   # copy this block
 
-# 3) Register the sandbox behind the gateway - back in the hub sub
+# 3) Register the sandbox behind the gateway — back in the hub subscription
 cd ../01-hub-ai-gateway
 #   paste the block into registered_sandboxes in terraform.tfvars
 az account set --subscription <hub-sub-id>
-terraform apply                        # minutes - just adds backend/API/product/policy
+terraform apply                        # minutes — adds backend/API/product/policy for the team
 ```
 
-**Demo-day tip:** deploy Stack A during your dry run and **leave it warm** - APIM
-is the long pole. On the day you only deploy a fresh Stack B and re-apply the tiny
-Stack A registration delta. Keep your tested deployment up as the fallback.
+**Permissions:** each deployer needs **Contributor + User Access Administrator** on
+the target subscription (User Access Administrator is required for the RBAC
+assignments). For the hub↔sandbox peering you also need write access to the hub VNet's
+resource group.
 
-## Pre-register resource providers (per subscription)
+Adding another team later is a one-line change: a new entry in `registered_sandboxes`
+plus a re-apply.
 
-```pwsh
-foreach ($rp in "Microsoft.CognitiveServices","Microsoft.MachineLearningServices","Microsoft.Search","Microsoft.Storage","Microsoft.KeyVault","Microsoft.Network","Microsoft.App","Microsoft.ApiManagement","Microsoft.Web","Microsoft.OperationalInsights","Microsoft.Authorization","Microsoft.PolicyInsights","Microsoft.DocumentDB","Microsoft.ContainerRegistry") {
-  az provider register --namespace $rp
-}
-```
+---
 
-## Permissions
-
-Each deployer needs **Contributor + User Access Administrator** on the target
-subscription (UAA is required for the RBAC assignments - Contributor alone gets a
-403). For the reverse hub<->sandbox peering, you also need write access to the hub
-VNet's resource group.
-
-## Stack A gateway: hardening & proof (deployed live)
-
-Stack A (the APIM StandardV2 hub gateway) was deployed into the demo hub and a live
-chat completion was driven **through the gateway to Stack B's private Foundry** -
-`gpt-4.1` replied and per-team token metrics flowed to the hub Log Analytics
-workspace. That single call exercises the whole architecture: public gateway ->
-subscription-key auth -> APIM **managed-identity** auth to the private Foundry ->
-**central Private DNS** resolution -> **VNet integration + peering** to the private
-endpoint at `192.168.8.x`.
-
-Three StandardV2 VNet-integration gotchas were hardened into `01-hub-ai-gateway`
-(each cost a failed apply first, so they're worth calling out):
-
-1. **Subnet delegation** - the APIM integration subnet must be delegated to
-   `Microsoft.Web/serverFarms`. (Classic Developer/Premium External injection must
-   NOT have this delegation - the example toggles it on `apim_is_v2`.)
-2. **`Microsoft.Web` resource provider** must be registered in the gateway
-   subscription, or the create fails with `SubnetSubscriptionMustBeRegisteredWithMicrosoftWeb`.
-   (Now in the pre-register list above.)
-3. **An NSG is still required** on the integration subnet even for StandardV2
-   (`NetworkSecurityGroupNotFound`), and APIM must depend on the NSG *association*
-   explicitly - otherwise Terraform races the association and APIM deploys before the
-   NSG is attached. The example adds `depends_on` on the association.
-
-Fallback: if v2 VNet integration ever errors on a given provider version, set
-`apim_sku = "Developer_1"` - the config drops the delegation and keeps the NSG
-automatically.
-
-## Key decisions baked in
-
-| Area | Choice | Why |
-| --- | --- | --- |
-| Gateway<->Foundry | Private mesh (posture A') | This Terraform module deploys Foundry private-only (see the Bicep-vs-Terraform callout below), so the gateway reaches it privately. Better security for a law firm anyway. |
-| APIM SKU | StandardV2 | Fast provision + VNet integration. Fallback: Developer_1 (classic injection) if v2 integration errors. |
-| Models | gpt-4.1 + text-embedding-3-large | Sensible chat + RAG defaults. Chat uses DataZone; embeddings use Standard (broadest availability). |
-| Cosmos | wired, disabled | Keeps the deploy lean. Set `enable_cosmos = true` to include agent state. |
-| Promotion | `environment` posture toggle + diagram | Concept without a fragile live migration. |
-| Data residency | DataZone + per-team isolation (default) | Ethical walls / client confidentiality. |
-
-## Centralized Private DNS: the prerequisite for the multi-sandbox gateway
-
-The single most important platform-foundation point for scaling this pattern.
-
-**The problem (hit live during the deploy):** with `flag_platform_landing_zone =
-false`, each sandbox creates its **own** copy of the `privatelink.*` Private DNS
-zones. When a second sandbox on the **same hub** tries to link its copies, Azure
-rejects it: *"A virtual network cannot be linked to multiple zones with overlapping
-namespaces."* A hub VNet can link to only one zone per namespace. So naive
-per-sandbox hub linking does not scale, and the hub cannot resolve every sandbox's
-private Foundry - which is exactly what the AI gateway needs.
-
-**Microsoft best practice (CAF: "Private Link and DNS integration at scale"):**
-centralize Private DNS. One set of `privatelink.*` zones, owned by the platform /
-connectivity subscription, deployed once. Three components:
-
-1. **Central Private DNS zones** in the connectivity subscription (the hub). The hub
-   VNet and every spoke VNet link to this *single* set - never per-spoke copies.
-2. **Azure Policy `DeployIfNotExists`** assigned at the management-group level, which
-   auto-creates a Private DNS Zone Group on *every* private endpoint pointing at the
-   central zones. Teams deploy PEs freely; DNS is wired automatically, no collisions.
-3. **Central DNS resolution** via a hub **Azure Private DNS Resolver** (or hub
-   DNS/firewall proxy) so on-prem and cross-spoke lookups resolve the private
-   endpoints.
-
-**How this maps to the module:** `flag_platform_landing_zone = true` (Bicep's
-`ailz-integrated` + `policyManagedPrivateDns`; Terraform
-`private_dns_zones.azure_policy_pe_zone_linking_enabled = true`) is the
-best-practice mode - the sandbox registers into the central zones instead of
-creating its own. `flag_platform_landing_zone = false` (used for the standalone
-sandbox here) is fine for a single isolated deployment but breaks the moment a
-second sandbox attaches to the same hub.
-
-**For Baker McKenzie's real environment, the prescriptive sequence is:**
-1. Platform team stands up the central `privatelink.*` zones once in the
-   connectivity subscription.
-2. Assign the DINE Private DNS policy at the management-group scope so every team's
-   private endpoints auto-register.
-3. Each Foundry sandbox deploys with `flag_platform_landing_zone = true`, pointing
-   at the central zones. Foundry, Search, Cosmos, Storage, and Key Vault private
-   endpoints all resolve through the hub - and the AI gateway resolves every
-   sandbox's Foundry with zero collisions.
-
-The collision is the concrete evidence for *why* centralized DNS is a prerequisite,
-not an optional nicety. **Discovery question:** does Baker McKenzie already have (or
-want help standing up) centralized Private DNS zones + the DINE policy in their
-platform landing zone? Their answer determines whether the gateway pattern is
-production-ready or needs that foundation first.
-
-### Reference implementation: proven in the demo hub
-
-This exact pattern is stood up and running in the demo hub subscription, so the
-workshop can show it, not just describe it:
-
-- **21 central `privatelink.*` zones** live in the hub's `networking-rg` (Foundry:
-  `cognitiveservices`, `openai`, `services.ai`; plus `search`, `blob/file/queue/table/dfs/web`,
-  `vaultcore`, `documents` + the Cosmos API zones, `azurecr`, `azure-api`, `azconfig`).
-  All **21 are VNet-linked to the hub VNet** with registration disabled.
-- **A custom initiative** (`hub-central-private-dns`) bundles the built-in
-  `DeployIfNotExists` policies for Cognitive/AI Services, AI Search, Key Vault,
-  Storage blob, and Cosmos (Sql) - each pointed at the corresponding central zone -
-  assigned **once** with a single **system-assigned managed identity**.
-- The policy identity holds **Network Contributor** (subscription) + **Private DNS
-  Zone Contributor** (`networking-rg`), so any new private endpoint in the governed
-  scope auto-gets a Private DNS Zone Group pointing at the central zones - no manual
-  per-PE DNS wiring.
-- A hub **Azure Private DNS Resolver** (inbound endpoint) provides the cross-network
-  resolution front door for on-prem / cross-spoke lookups.
-
-**Scope caveat (say this out loud in the room):** in the demo hub the initiative is
-assigned at **subscription scope** as a faithful reference - the tenant's sponsored
-subscriptions can't be re-parented under a management group I control. In Baker
-McKenzie's environment the *same* assignment lives at the **platform / connectivity
-management group** so every landing-zone subscription auto-registers. The mechanism
-is identical; only the scope moves up. That's a platform-team control, not a
-per-workload one.
-
-## Callout: Bicep vs Terraform - Foundry network posture (not at parity)
-
-A sharp, verified talking point: the two **official** IaC implementations of this
-same AI Landing Zone do **not** currently treat the Foundry account's network
-posture the same way.
-
-**Bicep** exposes network isolation as a first-class, top-level parameter and lets
-you deploy Foundry **public or private** (it even defaults to public):
-
-```
-// bicep-ptn-aiml-landing-zone/main.bicep
-param networkIsolation bool = false                                              // line 88 (defaults public)
-var _publicNetworkAccess = (!_networkIsolation || _applyIpRules) ? 'Enabled' : 'Disabled'  // line 699
-// line 97 states this applies to "the AI Foundry / Cognitive Services accounts"
-```
-Truth table (from the same file): `networkIsolation=false` -> Foundry **public**;
-`networkIsolation=true` -> **private**; `networkIsolation=true` + `allowedIpRanges`
--> private + public IP allow-list.
-
-**Terraform (this module)** deploys Foundry **private-only** through its public
-interface. The underlying `avm-ptn-aiml-foundry` sub-module supports both (it has
-`examples/public` and a `public_network_access_enabled` variable), but the
-landing-zone wrapper:
-
-- hardcodes `create_private_endpoints = true` (`main.foundry.tf:16`, not exposed), and
-- does not surface the Foundry `public_network_access_enabled` toggle, so it stays
-  `null` and the sub-module resolves it to `publicNetworkAccess = "Disabled"`:
-
-```
-// avm-ptn-aiml-foundry/locals.foundry.tf
-ai_foundry_public_network_access = (
-  var.ai_foundry.public_network_access_enabled == null ?
-  (var.create_private_endpoints ? "Disabled" : "Enabled") :   // -> Disabled here
-  (var.ai_foundry.public_network_access_enabled ? "Enabled" : "Disabled"))
-```
-
-Net: **Bicep = choose public/private for Foundry; this Terraform module = Foundry
-private-only** (other services like Key Vault / Storage / Search *do* expose public
-toggles in Terraform - Foundry specifically does not). That is why this workshop's
-gateway uses the private-mesh path (posture A').
-
-**Say it precisely:** scope it to "the Terraform landing-zone module," not
-"Terraform" in general, and version-stamp it ("as of the module version we
-deployed") - these modules change quickly.
-
-## Known constraint: governed (policy-locked) subscriptions
-
-Some subscriptions inherit a management-group Azure Policy that **forces Key Vault
-private-only** and cannot be overridden from inside the subscription (even
-`az keyvault update --public-network-access Enabled` is refused; Owner does not
-help). Observed first-hand in an MCAP demo subscription.
-
-Impact: the AVM **build/jump VMs cannot be provisioned** there - during creation
-they write their admin password into the private Key Vault from the deployer's
-public IP, which the policy blocks (`403 ForbiddenByConnection`). This is external
-governance, not a defect. Both VMs are therefore `deploy = false`.
-
-**Use this as a live workshop moment:** the platform policy refuses to expose the
-Key Vault regardless of operator rights - Zero Trust enforced by the platform, not
-by trust. The tradeoff is that environment management happens over the private
-network, not a public IP.
-
-### Demoing the data plane
-
-With the VMs off (and Foundry private), run a live data-plane action from a VM
-**inside a VNet where the private endpoints resolve**:
-
-- **Preferred - a VM in the sandbox VNet.** Create it manually (Portal/CLI), set
-  the admin password inline (no Key Vault write, so the policy doesn't block it),
-  pick any available size. Private endpoint FQDNs resolve automatically because the
-  module linked the zones to the sandbox VNet. Reach it via Bastion.
-- A VM in the hub VNet also works for reachability, but you must first link the
-  sandbox's `privatelink.*` zones to the hub VNet (this example already links them
-  to the hub for the gateway, so hub-side resolution works for the gateway path).
-
-## Files
+## Repository layout
 
 ```
 baker-mckenzie-workshop/
-├── 01-hub-ai-gateway/       # Stack A: shared APIM front door
-│   ├── main.tf              # APIM v2 + per-team backend/API/product/key/policy + RBAC
+├── 01-hub-ai-gateway/       # Stack A: shared Azure API Management front door
+│   ├── main.tf              # APIM (v2) + per-team backend/API/product/key/policy + RBAC
 │   ├── variables.tf         # registered_sandboxes map
 │   ├── outputs.tf           # gateway URL, example call
 │   └── terraform.tfvars.example
-└── 02-foundry-sandbox/      # Stack B: per-team governed Foundry landing zone
-    ├── variables.tf         # THE INTAKE CONTRACT
-    ├── main.tf              # AI LZ module (Foundry private, DataZone models, peering + DNS link)
-    ├── governance.tf        # Azure Policy: model allow-list (audit -> deny)
-    ├── cost.tf              # resource-group budget + alerts (showback)
-    ├── outputs.tf           # values to register in Stack A
-    └── terraform.tfvars.example
+├── 02-foundry-sandbox/      # Stack B: per-team governed Foundry landing zone
+│   ├── variables.tf         # the intake contract
+│   ├── main.tf              # AI Landing Zone module (private Foundry, DataZone models, peering + DNS)
+│   ├── governance.tf        # Azure Policy: approved-model list (audit → deny)
+│   ├── cost.tf              # resource-group budget + alerts (showback)
+│   ├── outputs.tf           # values to register in Stack A
+│   └── terraform.tfvars.example
+├── hub-central-dns/         # Centralized Private DNS reference (zones + DINE initiative)
+├── rbac-model.md            # Full RBAC map (both axes) + recommended minimally-viable set
+└── diagrams/                # Editable draw.io diagrams (+ rendered PNGs)
 ```
-
-## Open items to revisit
-
-- **Content Safety wiring:** `enable_content_safety` is in the intake contract as a
-  discussion point; confirm the module surface for enforcing it per project.
-- **Model asset IDs:** governance.tf allows any OpenAI-published model; tighten to
-  exact `allowedAssetIds` (pinned versions) when the customer's catalog is set.
 
 ## Diagrams
 
-`diagrams/` contains editable draw.io files with official Azure icons (rebuild with
-`python diagrams/build.py`):
+`diagrams/` contains editable draw.io files:
 
-- `hub-and-spoke-gateway.drawio` - the AI Gateway Landing Zone: clients -> hub APIM
-  -> per-team private Foundry sandboxes (solid = live, dashed = config + diagram).
-- `promotion-lifecycle.drawio` - intake -> governed sandbox -> governance review ->
+- `hub-and-spoke-gateway.drawio` — the AI Gateway Landing Zone: clients → hub API
+  Management → per-team private Foundry sandboxes.
+- `promotion-lifecycle.drawio` — intake → governed sandbox → governance review →
   production, with the guardrails that travel at every stage.
+- `foundry-gateway-rbac.drawio` — the RBAC model on both axes (user/service ×
+  control/data plane).
