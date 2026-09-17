@@ -214,7 +214,7 @@ flowchart LR
   MNET -.->|"hub ExpressRoute/VPN + DNS resolver"| ONPREM
 ```
 
-### Governance "underneath" (Ben's phrase)
+### Governance "underneath"
 
 - **Least-privilege data-plane RBAC** on each connected store, scoped to the project
   identity (see the RBAC model).
