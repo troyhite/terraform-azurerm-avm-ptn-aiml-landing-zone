@@ -55,3 +55,9 @@ plan*.txt
 examples/*/policy
 *.mptfbackup
 .avm/managed-files.json
+
+# Local diagram generator (hardcoded local icon path; diagrams are committed as .drawio/.png)
+examples/baker-mckenzie-workshop/diagrams/build.py
+
+# Live demo helper (contains environment-specific identifiers - keep out of the repo)
+examples/baker-mckenzie-workshop/gateway-demo.ps1

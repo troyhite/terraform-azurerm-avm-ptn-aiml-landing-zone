@@ -1,6 +1,6 @@
 # =====================================================================
 # STACK A - Hub AI Gateway : example
-# Deploy ONCE into the hub / homelab subscription. Then add each sandbox to
+# Deploy ONCE into the hub subscription. Then add each sandbox to
 # registered_sandboxes (from Stack B outputs) and re-apply.
 # =====================================================================
 
@@ -12,7 +12,7 @@ apim_sku            = "StandardV2_1"          # fallback: "Developer_1" if v2 VN
 publisher_name  = "Baker McKenzie AI Platform"
 publisher_email = "aiplatform@bakermckenzie.com"
 
-# Hub VNet (your homelab hub) the gateway integrates into and the sandboxes peer to.
+# Hub VNet the gateway integrates into and the sandboxes peer to.
 hub_vnet_resource_id       = "/subscriptions/<hub-sub-id>/resourceGroups/<hub-rg>/providers/Microsoft.Network/virtualNetworks/<hub-vnet>"
 apim_subnet_address_prefix = "10.0.250.0/27"  # must be inside the hub VNet and unused
 

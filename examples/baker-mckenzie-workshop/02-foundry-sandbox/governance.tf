@@ -6,8 +6,8 @@
 # This is the "governed model catalog" story: teams can only deploy approved
 # models, and you roll it out audit-first, then flip to deny.
 #
-# Talking point: pair this with the live proof (in the demo subscription) that a
-# management-group policy overrode even an Owner. Governance is enforced by the
+# At management-group scope, this class of policy enforces the platform's intent
+# regardless of a subscription operator's rights - governance is enforced by the
 # platform, not by trusting each team.
 # =====================================================================
 

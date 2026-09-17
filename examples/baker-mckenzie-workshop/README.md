@@ -9,6 +9,11 @@ of networking, identity, model governance, policy, and cost.
 It is built on the Azure AI Landing Zone Azure Verified Module and follows the
 Microsoft best-practice guidance at <https://azure.github.io/AI-Landing-Zones/>.
 
+> **Preview.** The Azure AI Landing Zone is currently in preview, and — given the pace
+> of change in AI — it may use Azure services that are themselves in preview. Treat the
+> module versions and specific behaviors here as a point-in-time reference; verify
+> against the latest guidance before a production rollout.
+
 ---
 
 ## What this demonstrates
@@ -141,10 +146,12 @@ Data flows to Foundry over the **private network**, not the public internet:
    SQL, Cosmos, etc.) is fronted by a private endpoint and resolved through the
    **central Private DNS** described above — the same foundation that lets the gateway
    resolve Foundry.
-2. **Foundry managed-network egress control.** Foundry's managed network governs
-   outbound access from agents and prompt flows: outbound is denied by default and
-   only **approved private-endpoint targets** (and, where needed, explicit FQDN
-   allow-lists) are permitted. Agents cannot exfiltrate to arbitrary destinations.
+2. **Foundry managed-network egress control.** Foundry supports a managed virtual
+   network that governs outbound access from agents and prompt flows. Configured in its
+   **allow-only-approved-outbound** mode, outbound is denied by default and only
+   **approved private-endpoint targets** (and, where needed, explicit FQDN allow-lists)
+   are permitted — so agents cannot reach arbitrary destinations. This mode is a
+   configuration choice; select it for confidentiality-sensitive workloads.
 3. **On-premises and corporate data** are reached through the hub over
    ExpressRoute / VPN, with the hub's Private DNS Resolver resolving the private
    endpoints — so a connector to an on-prem database rides the private path, never a
@@ -229,8 +236,8 @@ Owner/Contributor over the data.
 | Persona | Role | Scope | Plane |
 | --- | --- | --- | --- |
 | Developer / data scientist | **Azure AI Developer** | Project | Build (spans control + data at project scope) |
-| Project owner / lead | **Azure AI Project Manager** | Project | Control |
-| Platform / IT admin | **Azure AI Account Owner** (PIM-gated) | Account | Control |
+| Project owner / lead | **Cognitive Services Contributor** | Project | Control |
+| Platform / IT admin | **Azure AI Administrator** (PIM-gated) | Account | Control |
 | Security / auditor | **Reader** + **Cognitive Services Usages Reader** | Account | Read-only |
 
 **Azure AI Developer** is the keystone role. It lets a developer sign in as
@@ -247,7 +254,7 @@ MFA / PIM on that group.
 > **Key Vault Secrets Officer**, PIM-gated — it does not need standing administrative
 > rights on the vault.
 
-The full role-by-role breakdown, including the day-2 talk track, is in
+The full role-by-role breakdown and the recommended minimally-viable set are in
 [`rbac-model.md`](rbac-model.md).
 
 ---
@@ -380,26 +387,30 @@ a per-workload one.
 
 ---
 
-## Foundry network posture: Bicep vs Terraform (not at parity)
+## Foundry network posture: Bicep and Terraform parity
 
-A useful implementation detail to be aware of: the two official infrastructure-as-code
-implementations of the AI Landing Zone do **not** currently treat the Foundry
-account's network posture the same way.
+The AI Landing Zone has one implementation in each of Bicep and Terraform, maintained
+in separate repositories. Microsoft runs a formal
+[feature-parity initiative](https://azure.github.io/AI-Landing-Zones/terraform-parity/)
+to keep them equivalent, and that page is explicit that parity is **not yet complete**
+and that networking is one of the areas being equalized (as of August 2026). So for a
+given module version the two may differ — notably in how the Foundry account's network
+posture is expressed:
 
 - **Bicep** exposes network isolation as a first-class parameter and can deploy
   Foundry **public or private** (it defaults to public). Setting
   `networkIsolation = true` makes Foundry private; adding an IP allow-list gives
   private + a public allow-list.
-- **This Terraform landing-zone module** deploys Foundry **private-only**. It sets
+- **This Terraform landing-zone module** (the version deployed here) sets
   `create_private_endpoints = true` and does not surface the Foundry public-access
-  toggle, so the account resolves to public access disabled. (Other services such as
-  Key Vault, Storage, and AI Search *do* expose public toggles in Terraform — Foundry
-  specifically does not.)
+  toggle, so the Foundry account resolves to public access disabled — effectively
+  **private-only**. (Other services such as Key Vault, Storage, and AI Search *do*
+  expose public toggles in Terraform — Foundry specifically does not.)
 
-Net: with Bicep you choose Foundry public or private; with this Terraform module
-Foundry is private-only. That is why this reference uses the private-mesh path. Scope
-the statement to "the Terraform landing-zone module" and to the module version you
-deploy — these modules evolve quickly.
+Net: in the module version used here, Foundry is private-only under Terraform, which is
+why this reference uses the private-mesh path. Because the parity initiative is active,
+confirm the current behavior against the parity page and the module version you deploy
+before relying on this detail.
 
 ---
 

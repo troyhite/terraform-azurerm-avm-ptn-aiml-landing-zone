@@ -166,7 +166,7 @@ resource "azurerm_api_management_api" "aoai" {
   subscription_required = true
 
   # Minimal spec: proxy Azure OpenAI's inference paths. Import a full OpenAPI in
-  # production; for the demo this passes chat/completions/embeddings through.
+  # production; this reference passes chat/completions/embeddings through.
   import {
     content_format = "openapi+json"
     content_value = jsonencode({
@@ -196,7 +196,7 @@ resource "azurerm_api_management_api" "aoai" {
   }
 }
 
-# The AI-gateway governance policy (the heart of the demo):
+# The AI-gateway governance policy (the core of the pattern):
 #  - authentication-managed-identity : APIM's MI authenticates to private Foundry
 #  - set-backend-service             : route to this team's Foundry backend
 #  - azure-openai-token-limit        : per-team fair-use ceiling

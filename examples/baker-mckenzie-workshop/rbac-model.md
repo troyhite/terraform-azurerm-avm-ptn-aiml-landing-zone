@@ -1,19 +1,18 @@
 # Minimally viable RBAC - Foundry + AI Gateway landing zones
 
-Answers the day-1 question (Adam's backchannel): *"can we address their concern
-around minimally viable RBAC for Foundry environments?"* This maps every role the
+A minimally viable RBAC model for Foundry sandbox environments. It maps every role the
 two patterns deploy, on two axes:
 
-- **Who is calling** - **user-to-service** (a human or Entra group signs in) vs
+- **Who is calling** - **user-to-service** (a person or Entra group signs in) vs
   **service-to-service** (a workload/managed identity, no human in the loop).
 - **Which plane** - **control plane** (Azure Resource Manager: create, configure,
   delete the resource) vs **data plane** (the resource's own endpoint: call the
   model, read a blob, query an index, read a secret).
 
-The point to make in the room: least privilege = give the **narrowest plane** the
-job needs, to the **smallest scope**. The templates already do this for the
-service-to-service wiring; the only real decision Baker owns is the **user-to-service**
-side (which humans get what).
+The principle: least privilege = give the **narrowest plane** the job needs, at the
+**smallest scope**. The templates already do this for the service-to-service wiring;
+the decision your organization owns is the **user-to-service** side (which people get
+what).
 
 ---
 
@@ -53,14 +52,14 @@ Note the deliberate split on AI Search and Cosmos: the project identity gets the
 
 ---
 
-## User-to-service roles (the decision Baker owns)
+## User-to-service roles (the decision your organization owns)
 
 ### Intended by the pattern
 
 | Role | Who | Scope | Plane | Status |
 | --- | --- | --- | --- | --- |
-| **Azure AI Developer** | Developer **Entra group** (per team) | Foundry **project** | Project build (spans control of project artifacts + data use) | **Pattern-ready** - set `developer_group_object_id` to the team's group; `null` in the test deploy |
-| **Key Vault Administrator** | Deployment identity (bootstrap) | Key Vault | **Data** | **Deployed** - bootstrap only; should be reduced (see below) |
+| **Azure AI Developer** | Developer **Entra group** (per team) | Foundry **project** | Project build (spans control of project artifacts + data use) | **Pattern-ready** - set `developer_group_object_id` to the team's group |
+| **Key Vault Administrator** | Deployment identity (bootstrap) | Key Vault | **Data** | Bootstrap only; should be reduced (see below) |
 
 **Azure AI Developer** is the keystone user role: it lets a developer sign in **as
 themselves** (Entra, no keys) and build inside their project - create deployments and
@@ -68,19 +67,19 @@ connections, run prompt flows and evals, use the playground - **without** the po
 manage the account, change networking, or assign roles. That's the "self-service inside
 a guardrail" answer, scoped to one team's project = the ethical wall between teams.
 
-> **Cleanup callout (be honest about this on day 2):** the deploy identity currently
-> holds **Key Vault Administrator** as a bootstrap grant (the module even flags it:
+> **Cleanup note (recommended before production):** the deployment identity is
+> granted **Key Vault Administrator** as a bootstrap convenience (the module flags it:
 > *"Review if this permission is too permissive. Can this be Secrets User instead?"*).
 > For production, reduce it to **Key Vault Secrets User** (data-plane read) or
-> **Secrets Officer**, PIM-gated.
+> **Key Vault Secrets Officer**, PIM-gated.
 
 ### Recommended minimally-viable set (add these to the pattern)
 
 | Persona | Role | Scope | Plane | Rationale |
 | --- | --- | --- | --- | --- |
 | **Developer / data scientist** | **Azure AI Developer** | Project | Build | Everything needed to build; nothing to manage the account |
-| **Project owner / lead** | **Azure AI Project Manager** | Project | Control | Manage project membership + settings, still not account-wide |
-| **Platform / IT admin** | **Azure AI Account Owner** (or Cognitive Services Contributor) | Account | Control | Create projects, deployments, networking - **PIM-gated** |
+| **Project owner / lead** | **Cognitive Services Contributor** | Project | Control | Manage project resources (deployments, connections), still not account-wide RBAC |
+| **Platform / IT admin** | **Azure AI Administrator** | Account | Control | Create projects, deployments, networking - **PIM-gated** |
 | **Security / auditor** | **Reader** + **Cognitive Services Usages Reader** | Account/RG | Read-only | See config + consumption without any change or data rights |
 | **App / workload identity** | **Cognitive Services OpenAI User** | Account or project | Data | If an app calls Foundry directly (not via gateway), same key-free hop |
 
@@ -116,7 +115,7 @@ flowchart LR
 
   %% user-to-service (solid)
   DEV -->|"Azure AI Developer (build)"| PROJ
-  ADMIN -->|"Azure AI Account Owner · CONTROL · PIM"| ACCT
+  ADMIN -->|"Azure AI Administrator · CONTROL · PIM"| ACCT
   AUD -->|"Reader + Usages Reader · read-only"| ACCT
 
   %% service-to-service (dashed)
@@ -135,13 +134,13 @@ Legend: **solid = user-to-service**, **dashed = service-to-service**;
 
 ---
 
-## Day-2 talk track (30 seconds)
+## Summary
 
-> "RBAC here breaks down two ways. First, *who's calling* - service-to-service, where
-> the templates already wire managed identities with least-privilege data roles so no
-> human and no key is ever in the path; and user-to-service, which is the part you own -
-> who on your teams gets what. Second, *which plane* - control plane to shape the
-> resource, data plane to use it. Your minimally-viable set is small: developers get
-> **Azure AI Developer** on their project so they can build but not run the platform,
-> admins get account-level control behind PIM, and auditors get read-only. That's the
-> whole ethical-wall story - scoped to the project, enforced by Entra, no keys."
+RBAC here breaks down two ways. First, *who is calling* — service-to-service, where
+the templates already wire managed identities with least-privilege data roles so no
+person and no key is ever in the path; and user-to-service, the part your organization
+owns — who on the teams gets what. Second, *which plane* — control plane to shape the
+resource, data plane to use it. The minimally-viable set is small: developers get
+**Azure AI Developer** on their project so they can build but not run the platform,
+administrators get account-level control behind PIM, and auditors get read-only. That
+is the ethical-wall story — scoped to the project, enforced by Entra ID, no keys.

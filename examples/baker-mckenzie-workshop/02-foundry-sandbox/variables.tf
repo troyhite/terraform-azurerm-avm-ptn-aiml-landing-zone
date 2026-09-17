@@ -1,10 +1,9 @@
 # =====================================================================
 # STACK B - Foundry sandbox: the intake contract
 # =====================================================================
-# Every variable below is a governance decision the customer must make BEFORE a
-# sandbox can exist. This file is the demo's centerpiece: onboarding a new team
-# means copying terraform.tfvars, changing a handful of these values, and running
-# `terraform apply`. Read the comments aloud during the workshop.
+# Every variable below is a governance decision to make BEFORE a sandbox can exist.
+# Onboarding a new team means copying terraform.tfvars, changing a handful of these
+# values, and running `terraform apply`.
 # =====================================================================
 
 variable "enable_telemetry" {
@@ -19,9 +18,9 @@ variable "team_name" {
   type        = string
   default     = "applied-ai"
   description = <<DESCRIPTION
-The internal team that owns this sandbox. Baker McKenzie has multiple AI
-constituencies (internal-ai, client-innovation, applied-ai, danielle). Drives
-resource naming, tags, and the gateway product/subscription in Stack A.
+The internal team that owns this sandbox. An organization typically has multiple AI
+constituencies (e.g. internal-ai, client-innovation, applied-ai). Drives resource
+naming, tags, and the gateway product/subscription in Stack A.
 Keep it short and lowercase - it seeds the resource name prefix.
 DESCRIPTION
   validation {
@@ -65,7 +64,7 @@ DESCRIPTION
 
 variable "owner_email" {
   type        = string
-  default     = "owner@bakermckenzie.com"
+  default     = "team-owner@contoso.com"
   description = "Accountable owner for this sandbox. A sandbox cannot exist without a named owner. Tag + budget alert recipient."
 }
 
@@ -86,7 +85,7 @@ DESCRIPTION
 variable "cost_center" {
   type        = string
   default     = "legal-tech-0000"
-  description = "Chargeback/showback anchor. Every resource is tagged with this so Derrick's cost view is a single tag filter."
+  description = "Chargeback/showback anchor. Every resource is tagged with this so the platform cost view is a single tag filter."
 }
 
 # --- DATA RESIDENCY & ETHICAL WALLS (defaulted strict) ---------------
@@ -139,9 +138,9 @@ variable "enforce_model_policy_effect" {
   default     = "Audit"
   description = <<DESCRIPTION
 The Azure Policy effect for the model allow-list. Start with Audit so teams can
-discover what they need, then move to Deny to enforce. This mirrors the real
-audit-then-deny governance rollout and pairs with the live proof (in the demo
-sub) that platform policy overrides operator intent.
+discover what they need, then move to Deny to enforce. This mirrors the recommended
+audit-then-deny governance rollout; at management-group scope the same policy class
+enforces platform intent regardless of a subscription operator's rights.
 DESCRIPTION
   validation {
     condition     = contains(["Audit", "Deny", "Disabled"], var.enforce_model_policy_effect)
@@ -155,7 +154,7 @@ variable "enable_content_safety" {
   description = "Deploy Azure AI Content Safety alongside Foundry. Extra relevant for privileged legal content (prompt shields, groundedness, protected material)."
 }
 
-# --- POSTURE A' (private mesh): hub gateway reachability -------------
+# --- PRIVATE-MESH POSTURE: hub gateway reachability -----------------
 # Foundry is always private in this module (create_private_endpoints is
 # hardcoded true). The hub APIM (Stack A) reaches it over a PRIVATE path, so the
 # sandbox must (1) peer its VNet to the hub and (2) link its private DNS zones to
@@ -175,8 +174,8 @@ variable "create_reverse_hub_peering" {
   default     = true
   description = <<DESCRIPTION
 Whether Terraform also creates the reverse hub -> sandbox peering. Requires write
-access to the hub VNet's resource group. You own the homelab hub, so true is fine.
-Set false if a separate platform team owns the hub and will create the reverse peering.
+access to the hub VNet's resource group. Leave true when you own the hub; set false
+if a separate platform team owns the hub and will create the reverse peering.
 DESCRIPTION
 }
 
@@ -190,8 +189,8 @@ variable "monthly_budget_usd" {
 
 variable "budget_alert_emails" {
   type        = list(string)
-  default     = ["owner@bakermckenzie.com"]
-  description = "Recipients for budget threshold alerts (owner + platform cost lead, e.g. Derrick)."
+  default     = ["team-owner@contoso.com"]
+  description = "Recipients for budget threshold alerts (typically the sandbox owner + a platform cost lead)."
 }
 
 # --- OPTIONAL SERVICES -----------------------------------------------
@@ -201,8 +200,8 @@ variable "enable_cosmos" {
   default     = false
   description = <<DESCRIPTION
 Whether to deploy Cosmos DB (Foundry thread/agent state store). Wired into the
-template but OFF by default to keep the demo deploy lean and fast. Set true to
-show the full agent-state footprint.
+template but OFF by default to keep the initial deployment lean and fast. Set true to
+include the full agent-state footprint.
 DESCRIPTION
 }
 
@@ -211,7 +210,7 @@ DESCRIPTION
 variable "location" {
   type        = string
   default     = "centralus"
-  description = "Azure region for the sandbox. Central US for this engagement. In a fuller implementation, data_classification would constrain the allowed regions."
+  description = "Azure region for the sandbox. In a fuller implementation, data_classification would constrain the allowed regions."
 }
 
 variable "resource_group_name" {
@@ -223,5 +222,5 @@ variable "resource_group_name" {
 variable "spoke_vnet_address_space" {
   type        = list(string)
   default     = ["192.168.0.0/23"]
-  description = "Address space for the sandbox VNet. Standalone here (no hub peering under posture A), but keep it non-overlapping in case you later peer."
+  description = "Address space for the sandbox VNet. Keep it non-overlapping with the hub and other spokes so peering works."
 }

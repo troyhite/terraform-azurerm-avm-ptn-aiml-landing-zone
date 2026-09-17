@@ -9,7 +9,7 @@ team_name           = "applied-ai"
 use_case            = "contract-analysis"
 matter_id           = "none"
 environment         = "sandbox"
-owner_email         = "danielle@bakermckenzie.com"
+owner_email         = "team-owner@contoso.com"
 cost_center         = "legal-tech-1234"
 
 # The team's developer Entra ID GROUP - granted Azure AI Developer on this Foundry
@@ -28,10 +28,10 @@ enable_content_safety       = true
 
 # --- COST ---
 monthly_budget_usd  = 500
-budget_alert_emails = ["danielle@bakermckenzie.com", "derrick.sharpe@microsoft.com"]
+budget_alert_emails = ["team-owner@contoso.com", "platform-cost@contoso.com"]
 
 # --- OPTIONAL SERVICES ---
-enable_cosmos = false                         # wired but off for a lean demo
+enable_cosmos = false                         # wired but off for a lean starter deployment
 
 # --- PLACEMENT ---
 location                 = "centralus"

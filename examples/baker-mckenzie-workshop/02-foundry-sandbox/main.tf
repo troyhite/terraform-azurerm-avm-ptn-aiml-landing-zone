@@ -27,7 +27,7 @@ provider "azurerm" {
       prevent_deletion_if_contains_resources = false
     }
     cognitive_account {
-      # Purge Foundry/Cognitive accounts on destroy so repeat demo runs don't
+      # Purge Foundry/Cognitive accounts on destroy so repeat deployments don't
       # collide with soft-deleted names.
       purge_soft_delete_on_destroy = true
     }
@@ -44,7 +44,7 @@ module "naming" {
 # =====================================================================
 # STACK B - Governed Foundry sandbox (per team / per subscription)
 # =====================================================================
-# Posture A' (private mesh): Foundry is private (module hardcodes private
+# Private-mesh posture: Foundry is private (module hardcodes private
 # endpoints). The hub AI Gateway (Stack A) reaches it over a private path, so
 # this sandbox peers to the hub VNet and links its private DNS zones to the hub.
 # Clients never touch this directly - they go through the hub gateway URL.
@@ -56,7 +56,7 @@ locals {
   # prefix <= 7. Strip hyphens and truncate the team name.
   name_prefix = substr(replace(var.team_name, "-", ""), 0, 7)
 
-  # Showback + governance tags applied to every resource. Derrick's cost view is
+  # Showback + governance tags applied to every resource. The platform cost view is
   # a filter on these. The ethical-wall / residency story lives here too.
   tags = {
     team                  = var.team_name
@@ -136,8 +136,8 @@ module "ai_landing_zone" {
   enable_telemetry    = var.enable_telemetry
   tags                = local.tags
 
-  # Self-contained sandbox that owns its DNS/routing (the hub is a homelab VNet,
-  # not a full platform landing zone). Direct internet egress (no spoke firewall).
+  # Self-contained sandbox that owns its DNS/routing (this example targets a hub
+  # VNet rather than a full platform landing zone). Direct internet egress.
   flag_platform_landing_zone = false
   use_internet_routing       = true
 
@@ -156,11 +156,11 @@ module "ai_landing_zone" {
 
   # NOTE: the sandbox VNet still PEERS to the hub (above) for network reachability.
   # We intentionally do NOT link this sandbox's private DNS zones to the hub VNet:
-  # a hub VNet can link to only one zone per namespace, and another sandbox on the
-  # same homelab hub already linked its privatelink.* zones there. The sandbox's own
-  # zones are linked to its own VNet automatically, so it is fully self-resolving.
-  # Hub-side resolution for the AI gateway is handled separately in Stack A (it is
-  # not solvable by naive per-sandbox hub links when multiple sandboxes share a hub).
+  # a hub VNet can link to only one zone per namespace, and when multiple sandboxes
+  # share a hub their privatelink.* zones would collide. The sandbox's own zones are
+  # linked to its own VNet automatically, so it is fully self-resolving. Hub-side
+  # resolution for the AI gateway is handled by centralized Private DNS (see the
+  # hub-central-dns reference) - the scalable answer when many sandboxes share a hub.
   private_dns_zones = {}
 
   # No gateway/firewall/bastion/VMs in the sandbox. The gateway lives in the hub
@@ -176,8 +176,8 @@ module "ai_landing_zone" {
   buildvm_definition  = { deploy = false }
   jumpvm_definition   = { deploy = false }
 
-  # Container Apps hosting tier is not needed for the Foundry + gateway demo, and
-  # its AKS-backed environment hit capacity limits in Central US. Disable it -
+  # Container Apps hosting tier is not needed for the Foundry + gateway pattern, and
+  # its AKS-backed environment can hit regional capacity limits. Disable it -
   # nothing in this module depends on it (main.genai_app_resources.tf is empty).
   container_app_environment_definition = { deploy = false }
   app_gateway_definition = {
@@ -226,7 +226,7 @@ module "ai_landing_zone" {
     }
 
     # Cosmos is wired but OFF by default (empty map = not deployed) to keep the
-    # demo lean. Set enable_cosmos = true to include agent-state storage.
+    # initial deployment lean. Set enable_cosmos = true to include agent-state storage.
     cosmosdb_definition = var.enable_cosmos ? { this = { consistency_level = "Session" } } : {}
 
     key_vault_definition = {

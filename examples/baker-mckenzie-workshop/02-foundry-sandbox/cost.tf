@@ -2,7 +2,7 @@
 # STACK B - Cost guardrail
 # =====================================================================
 # The sandbox self-polices spend. A resource-group budget with alerts to the
-# owner + platform cost lead (Derrick). This is the per-sandbox half of the
+# owner + platform cost lead. This is the per-sandbox half of the
 # showback story; the hub gateway (Stack A) adds per-team token metrics.
 # =====================================================================
 

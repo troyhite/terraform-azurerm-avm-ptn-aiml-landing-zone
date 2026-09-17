@@ -44,10 +44,10 @@
         </mxCell>
 
         <!-- Q1: user × control (solid blue) -->
-        <mxCell id="q1a" value="Azure AI Account Owner&#10;Platform / IT admin · account scope · PIM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#1E40AF;fontColor=#1E3A8A;fontSize=11;strokeWidth=2;" vertex="1" parent="1">
+        <mxCell id="q1a" value="Azure AI Administrator&#10;Platform / IT admin · account scope · PIM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#1E40AF;fontColor=#1E3A8A;fontSize=11;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="190" y="170" width="415" height="52" as="geometry" />
         </mxCell>
-        <mxCell id="q1b" value="Azure AI Project Manager&#10;Project owner / lead · manages project membership" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#1E40AF;fontColor=#1E3A8A;fontSize=11;strokeWidth=2;" vertex="1" parent="1">
+        <mxCell id="q1b" value="Cognitive Services Contributor&#10;Project owner / lead · manages project resources" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#1E40AF;fontColor=#1E3A8A;fontSize=11;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="190" y="232" width="415" height="52" as="geometry" />
         </mxCell>
         <mxCell id="q1c" value="Reader  +  Cognitive Services Usages Reader&#10;Security / auditor · read-only, no data, no change" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;fontColor=#3730A3;fontSize=11;strokeWidth=2;" vertex="1" parent="1">
@@ -103,7 +103,7 @@
         <mxCell id="leg4" value="Green = data plane" style="text;html=1;align=left;fontSize=10;fontColor=#065F46;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="820" y="736" width="150" height="20" as="geometry" />
         </mxCell>
-        <mxCell id="leg5" value="★ = keystone role Baker actually decides on" style="text;html=1;align=left;fontSize=10;fontColor=#064E3B;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="leg5" value="★ = keystone role the organization actually decides on" style="text;html=1;align=left;fontSize=10;fontColor=#064E3B;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="820" y="756" width="260" height="20" as="geometry" />
         </mxCell>
       </root>
