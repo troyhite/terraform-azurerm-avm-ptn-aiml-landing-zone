@@ -300,6 +300,47 @@ MFA / PIM on that group.
 The full role-by-role breakdown and the recommended minimally-viable set are in
 [`rbac-model.md`](rbac-model.md).
 
+### ⚠️ Required post-deployment roles for AI Search + the chat playground
+
+> **Important — the module does not create these.** For AI Search to actually index
+> and query data inside Foundry (for example, uploading a document in the chat
+> playground, indexing it, and asking questions over it), a few storage roles must be
+> added **after** deployment. This was verified against a live deployment: the module
+> grants the **Foundry project** identity access to storage and Search, but it does
+> **not** grant the **AI Search service's own identity** access to the storage account,
+> so indexing fails until you add it.
+
+| # | Scope | Role | Assigned to | Why | In the pattern? |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Storage account | **Storage Blob Data Contributor** | **AI Search** service managed identity | The indexer reads source blobs and writes back during integrated vectorization | ❌ **Add this** |
+| 2 | Storage account | **Storage Blob Data Reader** | **Foundry project** identity | The project reads source blobs | ✅ Usually covered — the module already grants the project **Contributor** (a superset) on its own storage; add explicitly only for a storage account the project can't already read |
+| 3 | Storage account | **Storage Blob Data Contributor** | **your user account** | Only if you upload files **directly** to the storage account outside the Foundry portal | ❌ **Add if needed** (never auto-granted) |
+
+**Prerequisites for #1 to work:** the AI Search service must have a **system-assigned
+managed identity enabled** and **role-based access control enabled** (Keys → "Both" or
+"Role-based access control"). In the reference deployment one search service had no
+system identity — enable it first.
+
+```bash
+# Identifiers
+STORAGE_ID=$(az storage account show -g <rg> -n <storage-account> --query id -o tsv)
+SEARCH_MI=$(az search service show -g <rg> --name <search-service> --query identity.principalId -o tsv)
+# If SEARCH_MI is empty, enable the identity first:
+#   az search service update -g <rg> --name <search-service> --identity-type SystemAssigned
+
+# 1) AI Search MI -> Storage Blob Data Contributor
+az role assignment create --assignee-object-id "$SEARCH_MI" --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Contributor" --scope "$STORAGE_ID"
+
+# 3) Your user -> Storage Blob Data Contributor (direct-upload scenario only)
+az role assignment create --assignee "$(az ad signed-in-user show --query id -o tsv)" \
+  --role "Storage Blob Data Contributor" --scope "$STORAGE_ID"
+```
+
+These are safe to codify in the platform's post-deployment automation once the Search
+service identity is known. They are documented here because the AI Landing Zone module
+does not wire the Search-service-to-Storage grant today.
+
 ---
 
 ## Governance and controls enforced

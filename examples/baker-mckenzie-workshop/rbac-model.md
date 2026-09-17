@@ -50,6 +50,22 @@ Note the deliberate split on AI Search and Cosmos: the project identity gets the
 **control-plane** role to *shape* the resource and, where it needs to, a scoped
 **data-plane** role to *use* it - never blanket Owner/Contributor on the data.
 
+### Gap: roles the module does NOT create (add post-deployment)
+
+Verified against a live deployment. For AI Search to index and query data inside the
+Foundry chat playground, the **AI Search service's own managed identity** needs access
+to the storage account — and the module does **not** grant it. Add these after deploy:
+
+| Scope | Role | Assigned to | Why | Status |
+| --- | --- | --- | --- | --- |
+| Storage account | **Storage Blob Data Contributor** | **AI Search** service MI | Indexer reads source blobs + writes back during integrated vectorization | ❌ **Missing — required** |
+| Storage account | **Storage Blob Data Reader** | **Foundry project** MI | Project reads source blobs | ✅ Usually covered (module grants project **Contributor** on its storage, a superset) |
+| Storage account | **Storage Blob Data Contributor** | **your user account** | Direct upload to storage outside the Foundry portal | ❌ Missing — add if needed (never auto-granted) |
+
+Prerequisite: the AI Search service must have a **system-assigned managed identity**
+and **RBAC** enabled. See the README's "Required post-deployment roles" callout for
+the exact `az` commands.
+
 ---
 
 ## User-to-service roles (the decision your organization owns)
