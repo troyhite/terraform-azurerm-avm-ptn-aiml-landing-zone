@@ -124,9 +124,8 @@ first-class design decision, not an afterthought.
 
 ### The Foundry connection model
 
-Foundry projects reach data through typed **connections** — to Azure AI Search,
-Azure Storage / OneLake, Azure SQL / Cosmos DB, and external APIs (including Bing
-grounding). Two principles keep this governed:
+Foundry projects reach data through typed **connections**. Each connection is a
+first-class, governed object on the project. Two principles keep this governed:
 
 - **Identity, not keys.** Connections authenticate with the project's **managed
   identity** and Entra ID wherever the target supports it, so data access is
@@ -138,12 +137,51 @@ grounding). Two principles keep this governed:
   cannot see Team B's data source — the same ethical wall the rest of the pattern
   enforces.
 
+### Supported data-source / knowledge connection types
+
+The connection types Foundry supports for bringing data and knowledge into a project
+(from the official
+[Add a connection](https://learn.microsoft.com/azure/foundry/how-to/connections-add)
+reference; items marked *preview* are in public preview and can change):
+
+| Connection type | Status | Created via | Brings in |
+| --- | --- | --- | --- |
+| **Azure AI Search** | GA | Portal or code | Vector + text retrieval over indexes (RAG). Required for Standard Agents. |
+| **Azure Storage** | GA | Portal or code | Unstructured data — documents, images, files. Required for Standard Agents. |
+| **Azure Cosmos DB** | Preview | Code only | Document/vector data + agent memory. Required for Standard Agents. |
+| **Microsoft Fabric** | Preview | Portal (data-agent tool) or ARM | Conversational Q&A over Fabric / OneLake data. |
+| **SharePoint** | Preview | Code only | Organizational documents for agent grounding. |
+| **Azure Databricks** | Preview | Code only | Databricks Jobs and Genie Spaces at agent runtime. |
+| **Grounding with Bing Search** | GA | Portal or code | Real-time public web grounding. |
+| **Grounding with Bing Custom Search** | Preview | Code only | Tailored web grounding over a curated Bing instance. |
+| **Serp** | GA | Portal or code | Search-engine results pages for real-time data. |
+| **API key** | GA | Portal or code | Authenticated calls to any target API (e.g. a line-of-business data service). |
+| **Custom key** | GA | Portal or code | Securely stored keys + properties for custom targets (common for LangChain). |
+
+> There is no first-class "Azure SQL" connection type — reach a SQL/relational source
+> through an **API key** or **Custom key** connection (or an agent tool), not a native
+> connector. Foundry also supports connection types for **models, telemetry, and
+> governance** (Azure OpenAI, OpenAI, Foundry, Application Insights, Azure Key Vault,
+> Azure APIM, Model Gateway, Serverless Model, Copilot Studio) — those are not data
+> sources and are out of scope for this section.
+
+Two governance facts worth calling out:
+
+- **Creation is a privileged action.** Adding a connection requires **Foundry User**,
+  **Foundry Owner**, or Azure **Contributor** on the project/resource — it is not
+  something every developer can do unilaterally.
+- **Private connected resources need a private endpoint.** If a connected store has
+  public network access disabled, Foundry reaches it only through a **private endpoint**
+  in your VNet (resolved via the central Private DNS below) — the same private-ingress
+  model this pattern already uses. Note that cross-subscription connections are **not**
+  supported for *model deployment* (Foundry / Azure OpenAI).
+
 ### The private ingress path
 
 Data flows to Foundry over the **private network**, not the public internet:
 
 1. **Private endpoints on the data sources.** Each in-scope store (Storage, AI Search,
-   SQL, Cosmos, etc.) is fronted by a private endpoint and resolved through the
+   Cosmos DB, etc.) is fronted by a private endpoint and resolved through the
    **central Private DNS** described above — the same foundation that lets the gateway
    resolve Foundry.
 2. **Foundry managed-network egress control.** Foundry supports a managed virtual
@@ -165,8 +203,8 @@ flowchart LR
   end
   subgraph DATA[In-scope data sources]
     SRCH["AI Search"]
-    STOR["Storage / OneLake"]
-    SQL["Azure SQL / Cosmos"]
+    STOR["Storage"]
+    SQL["Cosmos DB / Fabric"]
     ONPREM["On-prem / corporate data"]
   end
   AGENT --> MNET
@@ -236,9 +274,14 @@ Owner/Contributor over the data.
 | Persona | Role | Scope | Plane |
 | --- | --- | --- | --- |
 | Developer / data scientist | **Azure AI Developer** | Project | Build (spans control + data at project scope) |
-| Project owner / lead | **Cognitive Services Contributor** | Project | Control |
-| Platform / IT admin | **Azure AI Administrator** (PIM-gated) | Account | Control |
+| Project owner / lead | **Foundry Project Manager** | Project | Control |
+| Platform / IT admin | **Foundry Account Owner** (PIM-gated) | Account | Control |
 | Security / auditor | **Reader** + **Cognitive Services Usages Reader** | Account | Read-only |
+
+> **Role names note:** the Foundry RBAC roles were recently renamed — **Foundry User /
+> Owner / Account Owner / Project Manager** were previously **Azure AI User / Owner /
+> Account Owner / Project Manager** (IDs and permissions unchanged; either name may
+> appear in the portal during rollout). **Azure AI Developer** was not renamed.
 
 **Azure AI Developer** is the keystone role. It lets a developer sign in as
 themselves (Entra, no keys) and build inside their project — deployments, connections,

@@ -78,10 +78,17 @@ a guardrail" answer, scoped to one team's project = the ethical wall between tea
 | Persona | Role | Scope | Plane | Rationale |
 | --- | --- | --- | --- | --- |
 | **Developer / data scientist** | **Azure AI Developer** | Project | Build | Everything needed to build; nothing to manage the account |
-| **Project owner / lead** | **Cognitive Services Contributor** | Project | Control | Manage project resources (deployments, connections), still not account-wide RBAC |
-| **Platform / IT admin** | **Azure AI Administrator** | Account | Control | Create projects, deployments, networking - **PIM-gated** |
+| **Project owner / lead** | **Foundry Project Manager** | Project | Control | Manage the project (members, connections, deployments), not account-wide RBAC |
+| **Platform / IT admin** | **Foundry Account Owner** | Account | Control | Create projects, deployments, networking - **PIM-gated** |
 | **Security / auditor** | **Reader** + **Cognitive Services Usages Reader** | Account/RG | Read-only | See config + consumption without any change or data rights |
 | **App / workload identity** | **Cognitive Services OpenAI User** | Account or project | Data | If an app calls Foundry directly (not via gateway), same key-free hop |
+
+> **Role names note:** Microsoft recently **renamed** the Foundry RBAC roles —
+> **Foundry User / Owner / Account Owner / Project Manager** were previously **Azure AI
+> User / Owner / Account Owner / Project Manager**. The role IDs and permissions are
+> unchanged; during rollout you may see either name in the portal. **Azure AI
+> Developer** was not renamed. This example's Terraform grants **Azure AI Developer**
+> to the developer group.
 
 Everything above is **Entra group -> role -> scope**, PIM for the privileged ones. No
 standing account-level admin for developers; no keys anywhere.
@@ -115,7 +122,7 @@ flowchart LR
 
   %% user-to-service (solid)
   DEV -->|"Azure AI Developer (build)"| PROJ
-  ADMIN -->|"Azure AI Administrator · CONTROL · PIM"| ACCT
+  ADMIN -->|"Foundry Account Owner · CONTROL · PIM"| ACCT
   AUD -->|"Reader + Usages Reader · read-only"| ACCT
 
   %% service-to-service (dashed)
