@@ -1,74 +1,84 @@
-# Centralized Private DNS for the multi-sandbox gateway
+# Foundry Private DNS coverage checklist
 
-When one hub fronts **many** Foundry sandboxes, Private DNS must be centralized. If
-each sandbox creates its own copy of the `privatelink.*` zones and links them to the
-shared hub VNet, the second sandbox fails — a VNet can link to only one zone per
-namespace. Centralized DNS is therefore a **prerequisite** for the AI gateway to
-resolve every sandbox's private Foundry, not an optional nicety.
+**For environments that already centralize Private DNS.** If you run a platform
+landing zone with centralized `privatelink.*` zones and a Private DNS Resolver (the
+typical mature setup — central zones in a connectivity/identity subscription, a
+DeployIfNotExists policy that auto-registers private endpoints, and a resolver as the
+front door), you do **not** need to build anything here. Use this as a **checklist** to
+confirm your existing central DNS fully covers Azure AI Foundry before you deploy
+sandboxes behind the gateway.
 
-This folder is a self-contained reference for that foundation, matching the Cloud
-Adoption Framework guidance *"Private Link and DNS integration at scale."*
+> New to centralized Private DNS, or don't have it yet? See the main README's
+> "Centralized Private DNS: the prerequisite" section for the concept and why it is
+> required for the multi-sandbox gateway.
 
-## What it deploys
+## Why Foundry needs a checklist
 
-- **One central set of `privatelink.*` zones** in the hub / connectivity subscription
-  (a `networking-rg`), each linked to the hub VNet with registration disabled. Covers
-  the Foundry dependency set: `cognitiveservices`, `openai`, `services.ai`, AI Search
-  (`search`), Storage (`blob/file/queue/table/dfs/web`), Key Vault (`vaultcore`),
-  Cosmos (`documents` + the Cosmos API zones), `azurecr`, `azure-api`, `azconfig`.
-- A **custom policy initiative** ([`initiative-definitions.json`](./initiative-definitions.json))
-  bundling the built-in `DeployIfNotExists` policies for Cognitive/AI Services, AI
-  Search, Key Vault, Storage blob, and Cosmos (Sql) — each pointed at the matching
-  central zone — so any new private endpoint auto-registers with no manual DNS wiring.
-- The assignment's **managed identity** granted **Network Contributor** (subscription)
-  and **Private DNS Zone Contributor** (the zones' resource group).
-- An **Azure Private DNS Resolver** in the hub as the resolution front door for
-  on-premises and cross-spoke lookups (point on-premises conditional forwarders for
-  the Azure public suffixes at its inbound endpoint IP).
+A single **Azure AI Foundry (AI Services) account** registers into **three** private
+DNS zones, not one. This is the most common gap — teams add `openai` and miss the
+other two, and the Foundry portal/playground then fails to resolve privately:
 
-## Scope
+| Foundry needs this zone | For |
+| --- | --- |
+| `privatelink.cognitiveservices.azure.com` | Cognitive Services / AI Services data plane |
+| `privatelink.openai.azure.com` | Azure OpenAI data plane |
+| `privatelink.services.ai.azure.com` | AI Services (Foundry) endpoint |
 
-This reference assigns the initiative at **subscription** scope so it can be run
-standalone. In a platform landing zone, assign the **same** initiative at the
-**platform / connectivity management group** so every landing-zone subscription
-inherits it automatically — the mechanism is identical; only the scope moves up. This
-is a platform-team control, not a per-workload one.
+## Full namespace coverage checklist
 
-## Reproduce
+Confirm your **central** zones include every namespace the Foundry sandbox
+dependencies use (each linked to the hub and resolvable from where developers and the
+gateway connect):
 
-```powershell
-$hub = "<hub-subscription-id>"; $rg = "networking-rg"; $hubVnetId = "<hub-vnet-resource-id>"
+- [ ] `privatelink.cognitiveservices.azure.com` — Foundry
+- [ ] `privatelink.openai.azure.com` — Foundry
+- [ ] `privatelink.services.ai.azure.com` — Foundry
+- [ ] `privatelink.search.windows.net` — Azure AI Search
+- [ ] `privatelink.blob.core.windows.net` — Storage (blob)
+- [ ] `privatelink.file.core.windows.net` — Storage (file)
+- [ ] `privatelink.queue.core.windows.net` — Storage (queue)
+- [ ] `privatelink.table.core.windows.net` — Storage (table)
+- [ ] `privatelink.dfs.core.windows.net` — Storage (ADLS)
+- [ ] `privatelink.vaultcore.azure.net` — Key Vault
+- [ ] `privatelink.documents.azure.com` — Cosmos DB (SQL; agent memory)
+- [ ] `privatelink.azurecr.io` — Container Registry (incl. the regional `*.data.azurecr.io` record)
+- [ ] `privatelink.azconfig.io` — App Configuration
+- [ ] `privatelink.azure-api.net` — API Management (the AI gateway)
 
-# 1. Central zones (loop over the privatelink.* set) + VNet links to the hub VNet
-#    az network private-dns zone create -g $rg -n <zone>
-#    az network private-dns link vnet create -g $rg -z <zone> -n hub-link -v $hubVnetId -e false
+## Confirm auto-registration (DINE policy)
 
-# 2. Initiative + assignment (edit initiative-definitions.json to point at your zones first)
-az policy set-definition create --name hub-central-private-dns `
-  --display-name "Hub - Configure private endpoints to use central private DNS zones" `
-  --definitions "@initiative-definitions.json" --subscription $hub
+Confirm your platform's **DeployIfNotExists** Private DNS policy set is assigned at the
+**connectivity / platform management group** and points at the central zones, so a new
+sandbox's private endpoints register automatically — no per-endpoint DNS wiring.
 
-az policy assignment create --name hub-central-dns `
-  --policy-set-definition "/subscriptions/$hub/providers/Microsoft.Authorization/policySetDefinitions/hub-central-private-dns" `
-  --scope "/subscriptions/$hub" --mi-system-assigned --location <region>
+- [ ] Built-in *"Configure Cognitive Services accounts to use private DNS zones"* →
+      cognitiveservices/openai/services.ai central zones
+- [ ] *"Configure Azure AI Search services to use private DNS zones"* → search central zone
+- [ ] *"Configure Azure Key Vaults to use private DNS zones"* → vaultcore central zone
+- [ ] *"Configure CosmosDB accounts to use private DNS zones"* (group `Sql`) → documents central zone
+- [ ] *"Configure a private DNS Zone ID for blob groupID"* → blob central zone
 
-# 3. Grant the assignment's managed identity its roles
-$mi = az policy assignment show --name hub-central-dns --scope "/subscriptions/$hub" --query identity.principalId -o tsv
-az role assignment create --assignee-object-id $mi --assignee-principal-type ServicePrincipal `
-  --role 4d97b98b-1d4f-4787-a291-c67834d212e7 --scope "/subscriptions/$hub"                       # Network Contributor
-az role assignment create --assignee-object-id $mi --assignee-principal-type ServicePrincipal `
-  --role b12aa53e-6015-4669-85d0-8515ebb3ae7f --scope "/subscriptions/$hub/resourceGroups/$rg"    # Private DNS Zone Contributor
-```
+[`initiative-definitions.json`](./initiative-definitions.json) is an **adaptable
+example** of bundling those built-in DINE policies into a single initiative pointed at
+your central zones — useful if you need to extend an existing assignment to cover the
+Foundry namespaces. (It uses a `<hub-subscription-id>` placeholder; a platform team
+would assign the equivalent at the management-group scope.)
 
-## Onboarding a sandbox onto the central zones
+## Confirm resolution reach
 
-For each sandbox private endpoint, create a **Private DNS zone group** pointing at the
-central zone (the DINE policy does this automatically when assigned at the right
-scope). The Foundry account endpoint registers into three zones —
-`cognitiveservices`, `openai`, and `services.ai`. Then link the sandbox spoke VNet to
-the central zones (not to per-spoke copies), so the hub and every spoke resolve the
-private endpoints through the single central set.
+- [ ] The hub / central **Private DNS Resolver** (or DNS proxy) resolves the private
+      endpoints for cross-spoke lookups.
+- [ ] **On-premises** clients resolve the Foundry endpoints privately — point
+      conditional forwarders for the Azure public suffixes (e.g. `openai.azure.com`,
+      `cognitiveservices.azure.com`, `services.ai.azure.com`, `search.windows.net`,
+      `vault.azure.net`, `blob.core.windows.net`, `documents.azure.com`) at the
+      resolver's inbound endpoint IP.
 
-> A standalone sandbox that keeps its own zones (linked only to its own VNet) still
-> resolves for itself, but the hub cannot resolve it — which is why centralized DNS is
-> required for the shared-gateway pattern.
+## In the module
+
+When a sandbox deploys into an environment with centralized, policy-managed DNS, set
+the module's platform-landing-zone mode so it registers into the central zones instead
+of creating its own (Terraform `private_dns_zones.azure_policy_pe_zone_linking_enabled
+= true`; Bicep `ailz-integrated` + `policyManagedPrivateDns`). The standalone mode
+(used by this example's sandbox for a self-contained deployment) creates per-sandbox
+zones and does not scale across many sandboxes on one hub.

@@ -440,29 +440,27 @@ owned by the platform / connectivity subscription, deployed once. Three componen
    DB, Storage, and Key Vault private endpoints all resolve through the hub — and the
    AI gateway resolves every sandbox's Foundry with no collisions.
 
-### Validated reference implementation
+### Confirming Foundry coverage in an existing platform landing zone
 
-This pattern has been stood up and exercised end to end in a reference environment, so
-it can be shown rather than only described:
+Most mature environments — including one with centralized `privatelink.*` zones, a
+DeployIfNotExists policy, and a Private DNS Resolver — already have this foundation.
+The work is then to **confirm it covers Azure AI Foundry**, which is easy to miss
+because a single Foundry account registers into **three** zones
+(`cognitiveservices`, `openai`, `services.ai`), not one.
 
-- A full set of central `privatelink.*` zones (Foundry: `cognitiveservices`, `openai`,
-  `services.ai`; plus `search`, Storage, `vaultcore`, Cosmos, `azurecr`, `azure-api`,
-  `azconfig`), all linked to the hub VNet with registration disabled.
-- A custom initiative bundling the built-in `DeployIfNotExists` policies for
-  Cognitive/AI Services, AI Search, Key Vault, Storage blob, and Cosmos — each pointed
-  at the corresponding central zone — assigned with a single managed identity holding
-  **Network Contributor** and **Private DNS Zone Contributor**, so any new private
-  endpoint auto-registers with no manual DNS wiring.
-- A hub **Azure Private DNS Resolver** as the cross-network resolution front door for
-  on-premises and cross-spoke lookups. In the reference environment, an on-premises
-  client resolves the sandbox's private Foundry to its private IP once conditional
-  forwarders point at the resolver — a live before/after proof that the private path
-  works.
+See [`foundry-dns-checklist/`](foundry-dns-checklist/) for a coverage checklist: the
+full Foundry namespace set to confirm in your central zones, the DINE policies that
+should auto-register new sandbox private endpoints, and the on-premises conditional
+forwarders to point at your resolver. It also includes an adaptable example initiative
+([`foundry-dns-checklist/initiative-definitions.json`](foundry-dns-checklist/initiative-definitions.json))
+if you need to extend an existing assignment to the Foundry namespaces.
 
-In production this same initiative is assigned at the **platform / connectivity
-management group** so every landing-zone subscription inherits it automatically. The
-mechanism is identical; only the scope moves up. This is a platform-team control, not
-a per-workload one.
+When a sandbox deploys into a policy-managed-DNS environment, set the module's
+platform-landing-zone mode (Terraform
+`private_dns_zones.azure_policy_pe_zone_linking_enabled = true`) so it registers into
+the central zones instead of creating its own — the standalone mode this example's
+sandbox uses is for a self-contained deployment and does not scale across many
+sandboxes on one hub.
 
 ---
 
@@ -573,7 +571,7 @@ baker-mckenzie-workshop/
 │   ├── cost.tf              # resource-group budget + alerts (showback)
 │   ├── outputs.tf           # values to register in Stack A
 │   └── terraform.tfvars.example
-├── hub-central-dns/         # Centralized Private DNS reference (zones + DINE initiative)
+├── foundry-dns-checklist/   # Foundry Private DNS coverage checklist (for environments that already centralize DNS)
 ├── rbac-model.md            # Full RBAC map (both axes) + recommended minimally-viable set
 └── diagrams/                # Editable draw.io diagrams (+ rendered PNGs)
 ```

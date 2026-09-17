@@ -160,7 +160,7 @@ module "ai_landing_zone" {
   # share a hub their privatelink.* zones would collide. The sandbox's own zones are
   # linked to its own VNet automatically, so it is fully self-resolving. Hub-side
   # resolution for the AI gateway is handled by centralized Private DNS (see the
-  # hub-central-dns reference) - the scalable answer when many sandboxes share a hub.
+  # foundry-dns-checklist) - the scalable answer when many sandboxes share a hub.
   private_dns_zones = {}
 
   # No gateway/firewall/bastion/VMs in the sandbox. The gateway lives in the hub
