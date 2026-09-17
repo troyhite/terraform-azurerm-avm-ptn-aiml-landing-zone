@@ -300,46 +300,41 @@ MFA / PIM on that group.
 The full role-by-role breakdown and the recommended minimally-viable set are in
 [`rbac-model.md`](rbac-model.md).
 
-### ⚠️ Required post-deployment roles for AI Search + the chat playground
+### ⚠️ Required roles for AI Search + the chat playground
 
-> **Important — the module does not create these.** For AI Search to actually index
-> and query data inside Foundry (for example, uploading a document in the chat
-> playground, indexing it, and asking questions over it), a few storage roles must be
-> added **after** deployment. This was verified against a live deployment: the module
-> grants the **Foundry project** identity access to storage and Search, but it does
-> **not** grant the **AI Search service's own identity** access to the storage account,
-> so indexing fails until you add it.
+> **Important.** For AI Search to actually index and query data inside Foundry (for
+> example, uploading a document in the chat playground, indexing it, and asking
+> questions over it), the **AI Search service's own managed identity** needs access to
+> the storage account. The AI Landing Zone module grants the **Foundry project**
+> identity access to storage and Search, but it does **not** grant the **Search
+> service's** identity access — so indexing fails until that role is added (verified
+> against a live deployment).
 
-| # | Scope | Role | Assigned to | Why | In the pattern? |
+| # | Scope | Role | Assigned to | Why | Handled by |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Storage account | **Storage Blob Data Contributor** | **AI Search** service managed identity | The indexer reads source blobs and writes back during integrated vectorization | ❌ **Add this** |
-| 2 | Storage account | **Storage Blob Data Reader** | **Foundry project** identity | The project reads source blobs | ✅ Usually covered — the module already grants the project **Contributor** (a superset) on its own storage; add explicitly only for a storage account the project can't already read |
-| 3 | Storage account | **Storage Blob Data Contributor** | **your user account** | Only if you upload files **directly** to the storage account outside the Foundry portal | ❌ **Add if needed** (never auto-granted) |
+| 1 | Storage account | **Storage Blob Data Contributor** | **AI Search** service managed identity | The indexer reads source blobs and writes back during integrated vectorization | ✅ **Codified** — [`02-foundry-sandbox/search-storage-rbac.tf`](02-foundry-sandbox/search-storage-rbac.tf) (`grant_search_service_storage_access`, default `true`) |
+| 2 | Storage account | **Storage Blob Data Reader** | **Foundry project** identity | The project reads source blobs | ✅ Usually covered — the module already grants the project **Contributor** (a superset) on its own storage |
+| 3 | Storage account | **Storage Blob Data Contributor** | **your user account** | Only if you upload files **directly** to the storage account outside the Foundry portal | ⚠️ Manual — never auto-granted (the deployment can't know the human) |
 
-**Prerequisites for #1 to work:** the AI Search service must have a **system-assigned
-managed identity enabled** and **role-based access control enabled** (Keys → "Both" or
-"Role-based access control"). In the reference deployment one search service had no
-system identity — enable it first.
+**How #1 is codified.** `search-storage-rbac.tf` discovers the sandbox's search
+services and storage accounts, then grants each Search service's managed identity
+`Storage Blob Data Contributor` on each storage account. Because the Search identity
+is created by the module, it is resolved via data lookup and applied on a **reconciling
+`terraform apply`** — the same two-pass model this repo already uses to register a
+sandbox behind the gateway (deploy the sandbox, then re-apply). On a brand-new resource
+group, deploy once with `grant_search_service_storage_access = false`, then set it
+`true` and re-apply. A Search service must have a **system-assigned managed identity**
+and **RBAC** enabled to be granted; services without one are skipped (enable the
+identity first).
+
+**#3 (direct upload) stays manual** — grant it to yourself only if you upload files to
+the storage account outside the Foundry portal:
 
 ```bash
-# Identifiers
 STORAGE_ID=$(az storage account show -g <rg> -n <storage-account> --query id -o tsv)
-SEARCH_MI=$(az search service show -g <rg> --name <search-service> --query identity.principalId -o tsv)
-# If SEARCH_MI is empty, enable the identity first:
-#   az search service update -g <rg> --name <search-service> --identity-type SystemAssigned
-
-# 1) AI Search MI -> Storage Blob Data Contributor
-az role assignment create --assignee-object-id "$SEARCH_MI" --assignee-principal-type ServicePrincipal \
-  --role "Storage Blob Data Contributor" --scope "$STORAGE_ID"
-
-# 3) Your user -> Storage Blob Data Contributor (direct-upload scenario only)
 az role assignment create --assignee "$(az ad signed-in-user show --query id -o tsv)" \
   --role "Storage Blob Data Contributor" --scope "$STORAGE_ID"
 ```
-
-These are safe to codify in the platform's post-deployment automation once the Search
-service identity is known. They are documented here because the AI Landing Zone module
-does not wire the Search-service-to-Storage grant today.
 
 ---
 
@@ -574,6 +569,7 @@ baker-mckenzie-workshop/
 │   ├── variables.tf         # the intake contract
 │   ├── main.tf              # AI Landing Zone module (private Foundry, DataZone models, peering + DNS)
 │   ├── governance.tf        # Azure Policy: approved-model list (audit → deny)
+│   ├── search-storage-rbac.tf  # AI Search MI → Storage grant (playground indexing fix)
 │   ├── cost.tf              # resource-group budget + alerts (showback)
 │   ├── outputs.tf           # values to register in Stack A
 │   └── terraform.tfvars.example

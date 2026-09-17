@@ -50,21 +50,24 @@ Note the deliberate split on AI Search and Cosmos: the project identity gets the
 **control-plane** role to *shape* the resource and, where it needs to, a scoped
 **data-plane** role to *use* it - never blanket Owner/Contributor on the data.
 
-### Gap: roles the module does NOT create (add post-deployment)
+### AI Search → Storage: a gap this example closes
 
 Verified against a live deployment. For AI Search to index and query data inside the
 Foundry chat playground, the **AI Search service's own managed identity** needs access
-to the storage account — and the module does **not** grant it. Add these after deploy:
+to the storage account — and the AI Landing Zone **module does not grant it**. This
+example closes that gap in [`search-storage-rbac.tf`](02-foundry-sandbox/search-storage-rbac.tf);
+the roles are:
 
 | Scope | Role | Assigned to | Why | Status |
 | --- | --- | --- | --- | --- |
-| Storage account | **Storage Blob Data Contributor** | **AI Search** service MI | Indexer reads source blobs + writes back during integrated vectorization | ❌ **Missing — required** |
+| Storage account | **Storage Blob Data Contributor** | **AI Search** service MI | Indexer reads source blobs + writes back during integrated vectorization | ✅ Codified in `search-storage-rbac.tf` (was a module gap) |
 | Storage account | **Storage Blob Data Reader** | **Foundry project** MI | Project reads source blobs | ✅ Usually covered (module grants project **Contributor** on its storage, a superset) |
-| Storage account | **Storage Blob Data Contributor** | **your user account** | Direct upload to storage outside the Foundry portal | ❌ Missing — add if needed (never auto-granted) |
+| Storage account | **Storage Blob Data Contributor** | **your user account** | Direct upload to storage outside the Foundry portal | ⚠️ Manual — never auto-granted |
 
-Prerequisite: the AI Search service must have a **system-assigned managed identity**
-and **RBAC** enabled. See the README's "Required post-deployment roles" callout for
-the exact `az` commands.
+Prerequisite for the AI Search grant: the Search service must have a **system-assigned
+managed identity** and **RBAC** enabled. `search-storage-rbac.tf` resolves the Search
+identity via data lookup and applies on a reconciling `terraform apply`; see the
+README's "Required roles for AI Search" callout.
 
 ---
 
